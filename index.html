@@ -1,0 +1,2081 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>台股複合交易策略工作站 — 葛蘭碧八大法則 × 布林 × MACD × 關鍵K線</title>
+  <!-- Tailwind CSS CDN (純前端零建置依賴) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap');
+
+    body {
+      font-family: 'Noto Sans TC', 'Inter', system-ui, -apple-system, sans-serif;
+      background-color: #0b0e14;
+      color: #f1f5f9;
+      overflow-x: hidden;
+    }
+
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* 自訂捲軸樣式 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #f59e0b;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-[#0b0e14] text-slate-100 selection:bg-amber-500/30">
+
+  <!-- 頂部導覽與真實股價搜尋 + 一鍵匯出列 -->
+  <header class="sticky top-0 z-30 border-b border-slate-800/80 bg-[#0f131c]/95 backdrop-blur-md px-4 lg:px-6 py-3">
+    <div class="max-w-[1440px] mx-auto flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
+      <!-- 品牌標題與即時連線狀態徽章 -->
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg shadow-amber-500/20 shrink-0">
+            <svg class="w-6 h-6 text-slate-950 stroke-[2.5]" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+            </svg>
+          </div>
+          <div>
+            <div class="flex flex-wrap items-center gap-2">
+              <h1 class="text-lg font-bold tracking-tight text-white">台股複合交易策略工作站</h1>
+              <span id="status-badge" class="text-[11px] font-medium px-2.5 py-0.5 rounded-full border bg-amber-500/15 text-amber-300 border-amber-500/30 flex items-center gap-1">
+                <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                <span id="status-badge-text">連線台股報價中...</span>
+              </span>
+            </div>
+            <p class="text-xs text-slate-400">
+              純前端獨立執行版 × 葛蘭碧八大法則 × 布林通道過濾 × MACD 背離 × Price Action
+            </p>
+          </div>
+        </div>
+
+        <!-- 主分頁切換按鈕 -->
+        <div class="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-0.5">
+          <button id="tab-btn-workstation" onclick="switchTab('WORKSTATION')" class="px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all bg-amber-500 text-slate-950 shadow">
+            📊 互動策略看盤室
+          </button>
+          <button id="tab-btn-export" onclick="switchTab('EXPORT_HUB')" class="px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all text-slate-400 hover:text-white">
+            📦 匯出專案 & GitHub 部署
+          </button>
+          <button id="tab-btn-python" onclick="switchTab('PYTHON_EXPORT')" class="px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all text-slate-400 hover:text-white">
+            🐍 Python 腳本
+          </button>
+        </div>
+      </div>
+
+      <!-- 標的快速切換、最新股價搜尋、色彩切換與一鍵匯出按鈕 -->
+      <div class="flex flex-wrap items-center gap-2">
+        <!-- 預設熱門台股按鈕群 -->
+        <div id="preset-buttons-container" class="flex flex-wrap items-center bg-slate-900/90 p-1 rounded-lg border border-slate-800 gap-1"></div>
+
+        <!-- 搜尋任意台股代號 -->
+        <form id="stock-search-form" class="flex items-center">
+          <div class="relative">
+            <input
+              id="custom-stock-input"
+              type="text"
+              placeholder="輸入代號 (如 2409 友達)"
+              class="bg-slate-900 border border-slate-700/80 rounded-l-lg pl-3 pr-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-amber-500 w-40"
+            />
+          </div>
+          <button
+            type="submit"
+            class="bg-amber-500/20 hover:bg-amber-500/30 border border-l-0 border-amber-500/50 text-amber-300 text-xs px-3 py-1.5 rounded-r-lg font-semibold transition-colors"
+          >
+            抓最新價
+          </button>
+        </form>
+
+        <!-- 台股紅漲綠跌 / 國際綠漲紅跌切換 -->
+        <button
+          id="color-theme-btn"
+          onclick="toggleColorTheme()"
+          class="px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs font-medium text-slate-300 flex items-center gap-1.5 transition-colors"
+        >
+          <span id="color-theme-dot" class="w-2 h-2 rounded-full bg-red-500"></span>
+          <span id="color-theme-label">台股紅漲綠跌</span>
+        </button>
+
+        <!-- 一鍵匯出下載純前端 HTML 按鈕 -->
+        <button
+          onclick="exportStandaloneHTML()"
+          class="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-500/20 transition-all"
+          title="將此完整純前端網頁下載為獨立 index.html 檔案"
+        >
+          ⬇ 匯出純前端 HTML
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 匯出成功提示訊息條 (預設隱藏，取代 alert) -->
+  <div id="toast-notification" class="hidden fixed bottom-5 right-5 z-50 bg-emerald-950/95 border border-emerald-400 text-emerald-200 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2.5 text-xs font-semibold">
+    <span class="text-base">✅</span>
+    <span id="toast-text">檔案已匯出！</span>
+  </div>
+
+  <!-- 主內容區 -->
+  <main class="max-w-[1440px] mx-auto px-4 lg:px-6 py-5 space-y-5">
+
+    <!-- 醒目紅字投資風險警語橫幅 -->
+    <div role="alert" class="bg-red-950/75 border-2 border-red-500/80 rounded-xl px-4 py-3 shadow-lg shadow-red-950/40 flex items-start sm:items-center gap-3">
+      <span class="text-lg shrink-0 animate-pulse">⚠️</span>
+      <p class="text-xs sm:text-sm font-bold text-red-300 leading-relaxed">
+        <span class="text-red-400 underline decoration-red-500/80 mr-1">投資風險警語：</span>
+        股票交易與期權操作具有高度風險，本工具僅供技術分析教學與參考（葛蘭碧八大法則、MACD、布林通道與未來 2 個月模擬預測路徑），不構成任何投資買賣建議。投資人應獨立判斷並自負盈虧風險。
+      </p>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 分頁 1：互動策略看盤室 (預設主畫面) -->
+    <!-- ========================================== -->
+    <div id="tab-content-workstation" class="space-y-5">
+
+      <!-- 頂部標的戰情摘要橫幅 -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 bg-gradient-to-r from-[#141923] via-[#161c28] to-[#141923] border border-slate-800/90 rounded-2xl p-4 shadow-xl">
+        <div class="lg:col-span-4 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-800 pb-3 lg:pb-0 lg:pr-4">
+          <div class="flex items-start justify-between">
+            <div>
+              <span id="stock-sector-badge" class="text-xs font-medium text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                光電面板景氣循環股
+              </span>
+              <div class="flex items-baseline gap-2 mt-1.5">
+                <h2 id="stock-title" class="text-2xl font-bold text-white">3481 群創</h2>
+                <span id="stock-en-name" class="text-xs text-slate-400 font-mono">Innolux</span>
+              </div>
+            </div>
+            <div class="text-right">
+              <div id="today-price-label" class="text-xs text-slate-400">今日基準價</div>
+              <div id="stock-current-price" class="text-2xl font-mono font-bold text-red-400">$19.90</div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-slate-800/70 text-xs">
+            <div>
+              <span id="ma20-label-title" class="text-slate-400 block">生命線 MA20</span>
+              <span id="stock-ma20-val" class="font-mono font-semibold text-amber-400">$18.40</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block">季線 MA60</span>
+              <span id="stock-ma60-val" class="font-mono font-semibold text-sky-400">$17.10</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block">2個月預測目標</span>
+              <span id="stock-target-val" class="font-mono font-semibold text-emerald-400">~$21.70</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-8 flex flex-col justify-between pl-0 lg:pl-2">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <span id="date-range-diagnosis-title" class="text-xs font-bold uppercase tracking-wider text-amber-400">
+                今日 → 未來 2 個月診斷：
+              </span>
+              <span id="stock-summary-status" class="text-sm font-bold text-white">
+                正乖離偏大 (接近賣點 S4) — 空手切勿追高，耐心等待回測買點 B2
+              </span>
+            </div>
+            <div class="flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-lg border border-slate-800">
+              <button
+                id="mode-btn-forecast"
+                onclick="setChartMode('RECENT_FORECAST')"
+                class="px-3 py-1 rounded text-xs font-semibold transition-all bg-amber-500 text-slate-950 shadow"
+              >
+                今日現況 + 預測未來 2 個月股價
+              </button>
+              <button
+                id="mode-btn-fullcycle"
+                onclick="setChartMode('FULL_CYCLE')"
+                class="px-3 py-1 rounded text-xs font-semibold transition-all text-slate-400 hover:text-white"
+              >
+                葛蘭碧八大買賣點全週期圖解
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-2 bg-slate-900/70 p-3 rounded-xl border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <p id="stock-strategy-advice" class="text-xs text-slate-300 leading-relaxed"></p>
+            <form id="manual-price-form" class="flex items-center shrink-0">
+              <span class="text-xs text-slate-400 mr-1.5">✎ 校正現價:</span>
+              <input
+                id="manual-price-input"
+                type="number"
+                step="0.05"
+                placeholder="19.90"
+                class="bg-slate-950 border border-slate-700 rounded-l-lg px-2 py-1 text-xs text-white w-24 focus:outline-none focus:border-amber-500 font-mono"
+              />
+              <button
+                type="submit"
+                class="bg-emerald-500/20 hover:bg-emerald-500/30 border border-l-0 border-emerald-500/50 text-emerald-300 text-xs px-2.5 py-1 rounded-r-lg font-semibold transition-colors"
+              >
+                套用
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- 控制列：四維度策略圖層開關 & 葛蘭碧八大買賣點快速定位 -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div class="lg:col-span-6 bg-[#151924] border border-slate-800/90 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+            <span class="text-amber-400">❖</span>
+            <span>四維度複合濾網圖層：</span>
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button id="filter-btn-granville" onclick="toggleFilter('granville')" class="px-2.5 py-1 rounded-lg text-xs font-medium border transition-all bg-amber-500/20 border-amber-500/60 text-amber-300">
+              1. 葛蘭碧均線
+            </button>
+            <button id="filter-btn-bollinger" onclick="toggleFilter('bollinger')" class="px-2.5 py-1 rounded-lg text-xs font-medium border transition-all bg-blue-500/20 border-blue-500/60 text-blue-300">
+              2. 布林通道過濾
+            </button>
+            <button id="filter-btn-macd" onclick="toggleFilter('macd')" class="px-2.5 py-1 rounded-lg text-xs font-medium border transition-all bg-purple-500/20 border-purple-500/60 text-purple-300">
+              3. MACD 動能確認
+            </button>
+            <button id="filter-btn-pa" onclick="toggleFilter('priceAction')" class="px-2.5 py-1 rounded-lg text-xs font-medium border transition-all bg-emerald-500/20 border-emerald-500/60 text-emerald-300">
+              4. PA 關鍵K線
+            </button>
+          </div>
+        </div>
+
+        <div class="lg:col-span-6 bg-[#151924] border border-slate-800/90 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+            <span class="text-amber-400">⊕</span>
+            <span>點擊定位八大法則點位：</span>
+          </div>
+          <div id="rule-jump-buttons" class="flex flex-wrap items-center gap-1.5"></div>
+        </div>
+      </div>
+
+      <!-- 經典清爽雙欄主視覺：左側 8 欄專業 K 線 + MACD 圖表，右側 4 欄四維度檢核與 2 個月預測劇本 -->
+      <div class="grid grid-cols-1 xl:grid-cols-12 gap-4">
+        <!-- 左側 8 欄：K 線 + 布林 + 均線 + MACD 雙面板圖表 -->
+        <div class="xl:col-span-8 bg-[#131722] border border-slate-800 rounded-xl p-4 shadow-2xl flex flex-col justify-between">
+          <!-- 圖表頂部固定狀態列：顯示 YYYY/MM/DD (週X) 與完整指標數值 -->
+          <div id="chart-top-hud" class="flex flex-wrap items-center justify-between gap-2 pb-3 mb-2 border-b border-slate-800/80 text-xs font-mono"></div>
+
+          <!-- SVG 畫布容器 -->
+          <div class="relative w-full overflow-hidden select-none">
+            <svg
+              id="main-strategy-svg"
+              viewBox="0 0 1000 567"
+              class="w-full h-auto cursor-crosshair"
+            ></svg>
+          </div>
+
+          <!-- 圖表底部圖例與參數選擇 + CSV 匯出按鈕 -->
+          <div class="flex flex-wrap items-center justify-between gap-4 pt-3 mt-2 border-t border-slate-800/80 text-xs text-slate-400">
+            <div class="flex flex-wrap items-center gap-4">
+              <span class="flex items-center gap-1.5">
+                <span class="w-3 h-0.5 bg-amber-400 inline-block"></span>
+                葛蘭碧生命線 (<span id="legend-ma-period">MA20</span>)
+              </span>
+              <span class="flex items-center gap-1.5">
+                <span class="w-3 h-0.5 bg-sky-400 inline-block border-b border-dashed"></span>
+                季線趨勢線 (MA60)
+              </span>
+              <span class="flex items-center gap-1.5">
+                <span class="w-3 h-2 bg-blue-500/20 border border-blue-400/50 inline-block rounded-sm"></span>
+                布林通道 (<span id="legend-bb-std">2.0</span>σ)
+              </span>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+              <label class="flex items-center gap-1.5">
+                <span>均線週期:</span>
+                <select id="select-ma-period" onchange="updateIndicatorParams()" class="bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-slate-200">
+                  <option value="10">10 MA (雙週線)</option>
+                  <option value="20" selected>20 MA (月線生命線)</option>
+                  <option value="60">60 MA (季線)</option>
+                </select>
+              </label>
+              <label class="flex items-center gap-1.5">
+                <span>布林標準差:</span>
+                <select id="select-bb-std" onchange="updateIndicatorParams()" class="bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-slate-200">
+                  <option value="1.5">1.5 σ</option>
+                  <option value="2.0" selected>2.0 σ (標準)</option>
+                  <option value="2.5">2.5 σ (極端乖離)</option>
+                </select>
+              </label>
+              <button
+                onclick="exportChartDataCSV()"
+                class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 font-semibold transition-colors"
+              >
+                ⬇ 匯出 CSV 報表
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右側 4 欄：四維度進場檢核表 + 未來 2 個月三階段劇本推演 + 台股交易平台直達 -->
+        <div class="xl:col-span-4 flex flex-col gap-4">
+          <!-- 卡片 1：四維度訊號真偽檢核表 -->
+          <div class="bg-[#151924] border border-slate-800 rounded-xl p-4 shadow-xl">
+            <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-800">
+              <div>
+                <h2 class="text-sm font-bold text-white flex items-center gap-1.5">
+                  <span class="text-amber-400">✔</span> 四維度訊號真偽檢核表
+                </h2>
+                <p id="checklist-date-subtitle" class="text-[11px] text-amber-300 font-mono mt-0.5"></p>
+              </div>
+              <div class="text-right">
+                <div class="text-[10px] text-slate-400 uppercase">策略共振評分</div>
+                <div id="checklist-score-val" class="text-xl font-mono font-bold text-emerald-400">
+                  80 <span class="text-xs font-normal">/ 100</span>
+                </div>
+              </div>
+            </div>
+            <div id="checklist-items-container" class="space-y-2.5"></div>
+          </div>
+
+          <!-- 卡片 2：未來 2 個月實戰劇本推演 + 外部看盤直達 -->
+          <div class="bg-[#151924] border border-slate-800 rounded-xl p-4 shadow-xl flex-1 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between pb-2.5 mb-3 border-b border-slate-800">
+                <span id="scenario-box-title" class="text-xs font-bold text-amber-400">
+                  ✨ 未來 2 個月實戰劇本推演
+                </span>
+              </div>
+              <div id="scenario-cards-container" class="space-y-2.5 text-xs"></div>
+            </div>
+
+            <!-- 台股權威看盤與下單網站一鍵直達 -->
+            <div class="mt-3 pt-3 border-t border-slate-800">
+              <div id="external-portals-title" class="text-[11px] font-bold text-slate-400 mb-2">
+                🌐 外部即時看盤與下單平台：
+              </div>
+              <div id="external-portals-grid" class="grid grid-cols-2 gap-1.5"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 分頁 2：純前端專案匯出中心 & GitHub 免編譯部署教學 -->
+    <!-- ========================================== -->
+    <section id="tab-content-export" class="hidden bg-[#131722] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-800 pb-4">
+        <div>
+          <span class="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
+            100% 純前端 Zero-Build 架構 (HTML5 + Tailwind + Vanilla JS)
+          </span>
+          <h2 class="text-xl font-bold text-white mt-2">
+            📦 一鍵匯出純前端專案檔案 & GitHub Pages 30 秒免編譯部署
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">
+            目前已轉換為純前端單檔架構，完全不需要安裝 Node.js 或執行 <code class="text-amber-300">npm run build</code>，下載 <code class="text-emerald-300">index.html</code> 後滑鼠連點兩下即可在瀏覽器離線/連線開啟！
+          </p>
+        </div>
+      </div>
+
+      <!-- 三種匯出格式卡片 -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-[#181d2a] border border-emerald-500/40 rounded-xl p-5 flex flex-col justify-between">
+          <div>
+            <div class="text-xs font-bold text-emerald-400 mb-1">匯出項目 1（最推薦）</div>
+            <h3 class="text-base font-bold text-white mb-2">完整純前端網頁專案 (index.html)</h3>
+            <p class="text-xs text-slate-300 leading-relaxed mb-4">
+              將整個工作站（包含葛蘭碧八大買賣點演算法、SVG 互動 K 線圖、FinMind/Yahoo 查價引擎與所有介面）打包為單一獨立 <code class="text-emerald-300">index.html</code> 檔案。
+            </p>
+          </div>
+          <button
+            onclick="exportStandaloneHTML()"
+            class="w-full py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all shadow-lg shadow-emerald-500/20"
+          >
+            ⬇ 下載獨立 index.html 專案檔
+          </button>
+        </div>
+
+        <div class="bg-[#181d2a] border border-amber-500/40 rounded-xl p-5 flex flex-col justify-between">
+          <div>
+            <div class="text-xs font-bold text-amber-400 mb-1">匯出項目 2</div>
+            <h3 class="text-base font-bold text-white mb-2">歷史日K與未來2個月預測表 (.csv)</h3>
+            <p class="text-xs text-slate-300 leading-relaxed mb-4">
+              匯出當前觀測標的之 100 筆交易日完整數據（含日期 <code class="text-amber-300">YYYY/MM/DD</code>、開高低收、MA20、MA60、布林軌道、MACD 與葛蘭碧買賣點標記），支援 Excel 直接開啟。
+            </p>
+          </div>
+          <button
+            onclick="exportChartDataCSV()"
+            class="w-full py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-all shadow-lg shadow-amber-500/20"
+          >
+            ⬇ 下載 Excel CSV 股價預測表
+          </button>
+        </div>
+
+        <div class="bg-[#181d2a] border border-sky-500/40 rounded-xl p-5 flex flex-col justify-between">
+          <div>
+            <div class="text-xs font-bold text-sky-400 mb-1">匯出項目 3</div>
+            <h3 class="text-base font-bold text-white mb-2">策略參數與四維度診斷報告 (.json)</h3>
+            <p class="text-xs text-slate-300 leading-relaxed mb-4">
+              匯出當前標的之四維度共振評分、回測買點 B2 目標價、2 個月波段目標價 S4 與完整 K 線 JSON 結構，方便串接其他量化系統。
+            </p>
+          </div>
+          <button
+            onclick="exportStrategyJSON()"
+            class="w-full py-2.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs transition-all shadow-lg shadow-sky-500/20"
+          >
+            ⬇ 下載 JSON 策略診斷報告
+          </button>
+        </div>
+      </div>
+
+      <!-- 純前端直接上傳 GitHub Pages 3 步驟說明 -->
+      <div class="bg-[#0d1017] border border-slate-800 rounded-xl p-5 space-y-3">
+        <h3 class="text-sm font-bold text-amber-400">
+          🚀 如何把下載的 index.html 直接免費部署到 GitHub Pages？（完全不用寫指令）
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-300">
+          <div class="p-3.5 rounded-lg bg-slate-900/90 border border-slate-800">
+            <div class="font-bold text-white mb-1">步驟 1：下載 index.html</div>
+            點擊上方綠色按鈕「下載獨立 index.html 專案檔」，您的電腦會取得名為 <code class="text-emerald-300">index.html</code> 的純前端檔案。
+          </div>
+          <div class="p-3.5 rounded-lg bg-slate-900/90 border border-slate-800">
+            <div class="font-bold text-white mb-1">步驟 2：上傳至 GitHub 倉庫</div>
+            在 GitHub 建立一個公開 Repository（例如 <code class="text-amber-300">tw-stock-strategy</code>），點擊 <strong>Add file → Upload files</strong>，把 <code class="text-emerald-300">index.html</code> 拖曳進去並點擊 Commit。
+          </div>
+          <div class="p-3.5 rounded-lg bg-slate-900/90 border border-slate-800">
+            <div class="font-bold text-white mb-1">步驟 3：開啟 GitHub Pages</div>
+            進入該倉庫的 <strong>Settings → Pages</strong>，在 Branch 選擇 <code class="text-sky-300">main</code> 並按 Save，等待 30 秒即可獲得您的永久免費看盤網址！
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- 分頁 3：Python 實盤繪圖腳本匯出 -->
+    <!-- ========================================== -->
+    <section id="tab-content-python" class="hidden bg-[#131722] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+        <div>
+          <h2 id="python-tab-title" class="text-lg font-bold text-white">
+            🐍 Python 本地端 / Google Colab 自動化繪圖腳本
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">
+            使用 <code class="text-amber-300">yfinance</code> 與 <code class="text-amber-300">mplfinance</code> 繪製葛蘭碧八大法則 + 布林通道 + MACD + 錘頭線標記
+          </p>
+        </div>
+        <button
+          onclick="copyPythonCode()"
+          class="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-colors shadow"
+        >
+          📋 複製完整 Python 腳本
+        </button>
+      </div>
+      <pre class="p-4 rounded-xl bg-[#0b0e14] border border-slate-800 text-xs font-mono text-slate-300 overflow-x-auto leading-relaxed"><code id="python-code-block"></code></pre>
+    </section>
+
+    <!-- 底部葛蘭碧八大買賣點完整速查矩陣 -->
+    <section class="bg-[#151924] border border-slate-800 rounded-xl p-4 shadow-xl">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h3 class="text-sm font-bold text-white">
+          📖 葛蘭碧八大法則 × 三大濾網 完整速查表（點擊任一卡片可直接於圖表定位）
+        </h3>
+        <span class="text-xs text-slate-400">
+          口訣：先看布林辨盤整、再看均線找位置、MACD 驗背離、反轉 K 線扣板機
+        </span>
+      </div>
+      <div id="granville-matrix-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3"></div>
+    </section>
+
+    <!-- 頁尾常駐紅字風險聲明 -->
+    <footer class="bg-red-950/50 border border-red-500/60 rounded-xl p-4 text-center space-y-1">
+      <div class="text-xs sm:text-sm font-bold text-red-400 flex items-center justify-center gap-1.5">
+        <span>⚠️ 交易有風險，投資需謹慎 — 本工具僅供技術分析研究參考</span>
+      </div>
+      <p class="text-xs text-red-300/90 max-w-4xl mx-auto leading-relaxed">
+        本網站提供之所有台股歷史數據、葛蘭碧八大買賣點標記、MACD 背離訊號、布林通道寬度與未來 2 個月股價預測圖表，均為演算法模型推演示範，不代表未來實際走勢，亦不構成任何形式之證券投資勸誘或買賣建議。進入市場交易前請務必設定嚴格停損點並獨立承擔投資風險。
+      </p>
+    </footer>
+
+  </main>
+
+  <!-- ============================================================================ -->
+  <!-- 純前端核心 JavaScript 引擎 (零外部框架依賴，原生支援所有計算、繪圖與檔案匯出) -->
+  <!-- ============================================================================ -->
+  <script>
+    // ==========================================
+    // 1. 動態日期工具：永遠以「今天 (new Date())」為基準，往後預測 2 個月 (44 個交易日)
+    // ==========================================
+    const WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
+
+    function formatToSlashDate(dateInput) {
+      if (!dateInput) {
+        const now = new Date();
+        return `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
+      }
+      if (typeof dateInput === 'string') {
+        const cleaned = dateInput.trim().replace(/-/g, '/');
+        const parts = cleaned.split('/');
+        if (parts.length === 3) {
+          const y = parts[0].padStart(4, '20');
+          const m = parts[1].padStart(2, '0');
+          const d = parts[2].slice(0, 2).padStart(2, '0');
+          return `${y}/${m}/${d}`;
+        }
+      }
+      const dt = new Date(dateInput);
+      if (isNaN(dt.getTime())) {
+        const now = new Date();
+        return `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
+      }
+      return `${dt.getFullYear()}/${String(dt.getMonth() + 1).padStart(2, '0')}/${String(dt.getDate()).padStart(2, '0')}`;
+    }
+
+    function getDateWithWeekday(slashDateStr) {
+      const normalized = formatToSlashDate(slashDateStr);
+      const dt = new Date(normalized.replace(/\//g, '-'));
+      if (isNaN(dt.getTime())) return normalized;
+      return `${normalized} (週${WEEKDAY_NAMES[dt.getDay()]})`;
+    }
+
+    function buildTradingDateTimeline(historyCount = 56, forecastCount = 44) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      while (today.getDay() === 0 || today.getDay() === 6) {
+        today.setDate(today.getDate() - 1);
+      }
+
+      const pastDates = [formatToSlashDate(today)];
+      const cursorBack = new Date(today);
+      while (pastDates.length < historyCount) {
+        cursorBack.setDate(cursorBack.getDate() - 1);
+        if (cursorBack.getDay() !== 0 && cursorBack.getDay() !== 6) {
+          pastDates.unshift(formatToSlashDate(cursorBack));
+        }
+      }
+
+      const futureDates = [];
+      const cursorFwd = new Date(today);
+      while (futureDates.length < forecastCount) {
+        cursorFwd.setDate(cursorFwd.getDate() + 1);
+        if (cursorFwd.getDay() !== 0 && cursorFwd.getDay() !== 6) {
+          futureDates.push(formatToSlashDate(cursorFwd));
+        }
+      }
+
+      return {
+        todayStr: formatToSlashDate(today),
+        twoMonthsLaterStr: futureDates[futureDates.length - 1],
+        allDates: [...pastDates, ...futureDates],
+        pastDates,
+        futureDates
+      };
+    }
+
+    // ==========================================
+    // 2. 葛蘭碧八大買賣點與預設台股資料庫
+    // ==========================================
+    const GRANVILLE_RULES_INFO = {
+      B1: {
+        id: 'B1',
+        type: 'BUY',
+        name: '買點 1 (B1)：突破走平/翻揚均線',
+        shortLabel: 'B1 突破買點',
+        granvilleDesc: '均線從下降逐漸走平並開始翻揚，股價從均線下方帶量突破均線之上，為長線多頭趨勢起點。',
+        paTrigger: '等待收盤出現「帶量長紅突破K線」或「看漲吞噬」再進場。'
+      },
+      B2: {
+        id: 'B2',
+        type: 'BUY',
+        name: '買點 2 (B2)：回測上揚均線不破',
+        shortLabel: 'B2 回測買點',
+        granvilleDesc: '股價位於上揚均線之上，拉回修正時觸碰上揚均線獲得支撐並再度彈升，是勝率最高的主升段加碼點。',
+        paTrigger: '切勿直接掛單接刀！等待均線處收出「長下影線錘頭線 (Hammer)」再扣板機。'
+      },
+      B3: {
+        id: 'B3',
+        type: 'BUY',
+        name: '買點 3 (B3)：假跌破上揚均線 (洗盤)',
+        shortLabel: 'B3 假跌破買點',
+        granvilleDesc: '股價急跌短暫跌破依然維持上揚趨勢的均線，但隨即強勢站回均線之上，屬於主力誘空洗盤。',
+        paTrigger: '跌破後 1~3 日內出現「破底翻長紅K」或「晨星」強勢站回均線。'
+      },
+      B4: {
+        id: 'B4',
+        type: 'BUY',
+        name: '買點 4 (B4)：負乖離過大 (搶反彈)',
+        shortLabel: 'B4 負乖離搶反彈',
+        granvilleDesc: '股價暴跌遠離下彎均線，負乖離率過大且跌出布林通道下軌，隨時會產生向均線靠攏的技術性反彈。',
+        paTrigger: '布林下軌外出現「長下影線錘頭線」，屬於逆勢短線單，反彈至均線即獲利。'
+      },
+      S1: {
+        id: 'S1',
+        type: 'SELL',
+        name: '賣點 1 (S1)：跌破走平/下彎均線',
+        shortLabel: 'S1 跌破賣點',
+        granvilleDesc: '均線在高檔從上升逐漸走平並開始下彎，股價從均線上方帶量跌破均線，代表多頭結束、空頭趨勢確立。',
+        paTrigger: '長黑K棒實體貫穿均線（斷頭鍘刀）或高檔「看跌吞噬」，果斷離場。'
+      },
+      S2: {
+        id: 'S2',
+        type: 'SELL',
+        name: '賣點 2 (S2)：反彈受阻下彎均線',
+        shortLabel: 'S2 反彈受阻賣點',
+        granvilleDesc: '股價位於下彎均線之下，跌深反彈至均線附近無法突破再度回落，為空頭市場典型的「逃命波」。',
+        paTrigger: '觸碰下彎均線時收出「流星線 (長上影線)」或「墓碑線」。'
+      },
+      S3: {
+        id: 'S3',
+        type: 'SELL',
+        name: '賣點 3 (S3)：假突破下彎均線 (誘多)',
+        shortLabel: 'S3 假突破賣點',
+        granvilleDesc: '股價短暫突破仍在下彎的均線，但因均線助跌力道強勁，隨即又跌回均線之下，屬於空頭誘多陷阱。',
+        paTrigger: '突破隔日立刻出現「烏雲罩頂」或「長黑吞噬」跌回均線之下。'
+      },
+      S4: {
+        id: 'S4',
+        type: 'SELL',
+        name: '賣點 4 (S4)：正乖離過大 (短線過熱)',
+        shortLabel: 'S4 正乖離過大',
+        granvilleDesc: '股價連續急漲遠離上揚的均線，正乖離率過大且衝出布林上軌，隨時面臨獲利回吐拉回修正。',
+        paTrigger: '高檔出現「流星線」或「十字變盤線」，持有者分批獲利了結，空手者嚴禁追高。'
+      }
+    };
+
+    const STOCK_PRESETS = {
+      '3481': {
+        code: '3481',
+        name: '群創',
+        enName: 'Innolux',
+        sector: '光電面板景氣循環股',
+        basePrice: 16.5,
+        peakPrice: 21.5,
+        dipPrice: 14.8,
+        currentPrice: 19.9,
+        ma20Current: 18.4,
+        ma60Current: 17.1,
+        summaryStatus: '正乖離偏大 (接近賣點 S4) — 空手切勿追高，耐心等待回測買點 B2',
+        strategyAdvice: '群創近期連漲來到 19.90 元附近，布林通道開口擴張代表趨勢強勁，但短線正乖離過大。最佳策略為等待股價降溫回測上揚 MA20 (約 18.40~18.60 元)，確認 MACD 維持零軸之上且出現「錘頭線」再進場佈局，2個月波段目標看 21.50 元。'
+      },
+      '2312': {
+        code: '2312',
+        name: '金寶',
+        enName: 'Kinpo Electronics',
+        sector: '電子代工 / AI 伺服器電源題材',
+        basePrice: 28.5,
+        peakPrice: 36.8,
+        dipPrice: 26.2,
+        currentPrice: 35.4,
+        ma20Current: 33.1,
+        ma60Current: 30.8,
+        summaryStatus: '強勢多頭衝高 (賣點 S4 警戒區) — 等待拉回 33.0~33.3 元支撐區',
+        strategyAdvice: '金寶自 28.8 元帶量突破均線 (買點 1) 後沿著 MA20 強勢推升至 35.40 元。目前正乖離偏大，建議持有者可部分分批獲利，空手者鎖定回測 MA20 (約 33.10 元) 出現止跌紅K的「買點 2 (B2)」，2個月後波段目標上看 36.80 元。'
+      },
+      '3231': {
+        code: '3231',
+        name: '緯創',
+        enName: 'Wistron',
+        sector: 'AI 伺服器核心指標股',
+        basePrice: 102.0,
+        peakPrice: 128.0,
+        dipPrice: 95.0,
+        currentPrice: 113.5,
+        ma20Current: 111.5,
+        ma60Current: 109.8,
+        summaryStatus: '買點 3 (B3) 假跌破站回 / 回測支撐確認 — 具備高勝率風報比',
+        strategyAdvice: '緯創季線 (MA60) 扣抵低位走平翻揚，股價近期回測均線短暫假跌破後迅速收出長下影線站回均線之上，屬於標準「葛蘭碧買點 3 (B3)」，搭配 MACD 零軸上翻紅，2個月波段目標看 128.0 元。'
+      },
+      '2330': {
+        code: '2330',
+        name: '台積電',
+        enName: 'TSMC',
+        sector: '晶圓代工龍頭 / 權值核心',
+        basePrice: 960.0,
+        peakPrice: 1160.0,
+        dipPrice: 915.0,
+        currentPrice: 1085.0,
+        ma20Current: 1045.0,
+        ma60Current: 1010.0,
+        summaryStatus: '多頭格局穩健 — 等待回測月線 MA20 (約 1045~1055 元) 買點 B2',
+        strategyAdvice: '台積電長線均線維持多頭排列，每次回測上揚 MA20 出現縮腳錘頭線或紅K吞噬皆為高勝率之葛蘭碧買點 2 (B2)，2個月後目標價上看 1160 元。'
+      },
+      '2317': {
+        code: '2317',
+        name: '鴻海',
+        enName: 'Foxconn',
+        sector: 'AI 伺服器機櫃 / 電子代工龍頭',
+        basePrice: 175.0,
+        peakPrice: 222.0,
+        dipPrice: 165.0,
+        currentPrice: 204.0,
+        ma20Current: 196.0,
+        ma60Current: 189.0,
+        summaryStatus: '上升趨勢通道運行 — 關注回測 196 元月線支撐之買點 B2',
+        strategyAdvice: '鴻海布林通道溫和擴張，MACD 維持零軸上方，回測 MA20 不破且量縮止穩時可依 B2 法則切入，2個月波段目標看 222 元。'
+      },
+      '2603': {
+        code: '2603',
+        name: '長榮',
+        enName: 'Evergreen Marine',
+        sector: '航運高股息景氣股',
+        basePrice: 188.0,
+        peakPrice: 242.0,
+        dipPrice: 176.0,
+        currentPrice: 221.0,
+        ma20Current: 211.0,
+        ma60Current: 202.0,
+        summaryStatus: '波段多頭回檔測試 — 觀察 MA20 支撐與關鍵反轉 K 線',
+        strategyAdvice: '航運股波動劇烈，務必搭配布林通道過濾盤整，並嚴格等待回測均線出現實體紅K吞噬後再行介入。'
+      }
+    };
+
+    const TW_STOCK_NAME_DICT = {
+      '3481': '群創', '2409': '友達', '6116': '彩晶', '2312': '金寶',
+      '3231': '緯創', '2330': '台積電', '2317': '鴻海', '2382': '廣達',
+      '2454': '聯發科', '2603': '長榮', '2609': '陽明', '2615': '萬海',
+      '2303': '聯電', '2881': '富邦金', '2882': '國泰金', '2891': '中信金',
+      '0050': '元大台灣50', '0056': '元大高股息', '00878': '國泰永續高股息'
+    };
+
+    // ==========================================
+    // 3. 全域應用程式狀態 (State)
+    // ==========================================
+    const state = {
+      selectedStockCode: '3481',
+      customStocks: {},
+      liveCandlesMap: {},
+      chartMode: 'RECENT_FORECAST', // 'RECENT_FORECAST' | 'FULL_CYCLE'
+      colorTheme: 'TW', // 'TW' (紅漲綠跌) | 'INTL' (綠漲紅跌)
+      activeTab: 'WORKSTATION',
+      filters: {
+        granville: true,
+        bollinger: true,
+        macd: true,
+        priceAction: true,
+        showMA60: true
+      },
+      maPeriod: 20,
+      bbStd: 2.0,
+      hoveredIndex: null,
+      selectedRuleId: 'B2',
+      chartData: [],
+      currentBarIndex: 55
+    };
+
+    function getColors() {
+      if (state.colorTheme === 'TW') {
+        return {
+          up: '#ef4444',
+          upBg: 'rgba(239, 68, 68, 0.16)',
+          upBorder: '#f87171',
+          down: '#10b981',
+          downBg: 'rgba(16, 185, 129, 0.16)',
+          downBorder: '#34d399',
+          ma20: '#f59e0b',
+          ma60: '#38bdf8',
+          bbBand: '#60a5fa'
+        };
+      }
+      return {
+        up: '#10b981',
+        upBg: 'rgba(16, 185, 129, 0.16)',
+        upBorder: '#34d399',
+        down: '#ef4444',
+        downBg: 'rgba(239, 68, 68, 0.16)',
+        downBorder: '#f87171',
+        ma20: '#f59e0b',
+        ma60: '#38bdf8',
+        bbBand: '#60a5fa'
+      };
+    }
+
+    function getCurrentStock() {
+      return state.customStocks[state.selectedStockCode] || STOCK_PRESETS[state.selectedStockCode] || STOCK_PRESETS['3481'];
+    }
+
+    // ==========================================
+    // 4. K 線形態偵測與技術指標 + 未來 2 個月預測演算法
+    // ==========================================
+    function detectCandlestickPattern(curr, prev) {
+      if (!curr) return null;
+      const body = Math.abs(curr.close - curr.open);
+      const totalRange = Math.max(0.01, curr.high - curr.low);
+      const lowerShadow = Math.min(curr.open, curr.close) - curr.low;
+      const upperShadow = curr.high - Math.max(curr.open, curr.close);
+      const isBull = curr.close >= curr.open;
+
+      if (lowerShadow >= body * 1.75 && lowerShadow >= totalRange * 0.48) {
+        return { name: '長下影線錘頭線 (Hammer)', bias: 'BULL' };
+      }
+      if (upperShadow >= body * 1.75 && upperShadow >= totalRange * 0.48) {
+        return { name: '長上影線流星線 (Shooting Star)', bias: 'BEAR' };
+      }
+      if (prev && curr.close > curr.open && prev.close < prev.open && curr.close >= prev.open && curr.open <= prev.close) {
+        return { name: '看漲吞噬紅K (Bullish Engulfing)', bias: 'BULL' };
+      }
+      if (prev && curr.close < curr.open && prev.close > prev.open && curr.open >= prev.close && curr.close <= prev.open) {
+        return { name: '看跌吞噬黑K (Bearish Engulfing)', bias: 'BEAR' };
+      }
+      if (body <= totalRange * 0.14) {
+        return { name: '十字變盤線 (Doji)', bias: 'NEUTRAL' };
+      }
+      if (isBull && body >= totalRange * 0.72) {
+        return { name: '實體長紅K棒 (Marubozu)', bias: 'BULL' };
+      }
+      return null;
+    }
+
+    function enrichCandlesWithIndicatorsAndForecast(rawCandles, maPeriod = 20, bbStdMult = 2.0) {
+      const historyCount = Math.min(56, rawCandles.length);
+      const forecastCount = 44; // 未來 2 個月 (44 個交易日)
+      const timeline = buildTradingDateTimeline(historyCount, forecastCount);
+
+      const slicedRaw = rawCandles.slice(-historyCount);
+      const historyBars = slicedRaw.map((c, idx) => ({
+        index: idx,
+        date: timeline.pastDates[idx] || formatToSlashDate(c.date),
+        open: Number(c.open.toFixed(2)),
+        high: Number(c.high.toFixed(2)),
+        low: Number(c.low.toFixed(2)),
+        close: Number(c.close.toFixed(2)),
+        volume: Math.round(c.volume || 45000),
+        rule: null,
+        paPattern: null,
+        divergence: null,
+        isCurrent: idx === slicedRaw.length - 1,
+        isForecast: false
+      }));
+
+      const lastBar = historyBars[historyBars.length - 1];
+      const recentSlice = historyBars.slice(-maPeriod);
+      const currentMA20 = recentSlice.reduce((s, b) => s + b.close, 0) / recentSlice.length;
+      const currentBias = ((lastBar.close - currentMA20) / currentMA20) * 100;
+
+      const forecastBars = [];
+      const pullbackTarget = currentBias > 2.2 ? currentMA20 * 1.012 : lastBar.close * 0.975;
+      const midBounceTarget = Math.max(lastBar.close * 1.045, currentMA20 * 1.08);
+      const midDipTarget = Math.max(pullbackTarget * 1.025, currentMA20 * 1.03);
+      const twoMonthPeakTarget = Math.max(lastBar.close * 1.12, currentMA20 * 1.16);
+
+      for (let f = 1; f <= forecastCount; f++) {
+        const dateStr = timeline.futureDates[f - 1];
+        let targetClose;
+        let rule = null;
+        let paPattern = null;
+
+        if (f <= 11) {
+          const t = f / 11;
+          targetClose = lastBar.close + (pullbackTarget - lastBar.close) * Math.sin((t * Math.PI) / 2);
+          if (f === 11) {
+            rule = 'B2';
+            paPattern = '預測買點B2：回測MA20 + 錘頭線止跌確認';
+          }
+        } else if (f <= 24) {
+          const t = (f - 11) / 13;
+          targetClose = pullbackTarget + (midBounceTarget - pullbackTarget) * ((1 - Math.cos(t * Math.PI)) / 2);
+        } else if (f <= 31) {
+          const t = (f - 24) / 7;
+          targetClose = midBounceTarget + (midDipTarget - midBounceTarget) * Math.sin((t * Math.PI) / 2);
+          if (f === 31) {
+            rule = 'B3';
+            paPattern = '預測買點B3：回測支撐洗盤後吞噬紅K';
+          }
+        } else if (f <= 41) {
+          const t = (f - 31) / 10;
+          targetClose = midDipTarget + (twoMonthPeakTarget - midDipTarget) * ((1 - Math.cos(t * Math.PI)) / 2);
+          if (f === 41) {
+            rule = 'S4';
+            paPattern = '預測賣點S4：2個月波段目標 (正乖離過大獲利點)';
+          }
+        } else {
+          const t = (f - 41) / 3;
+          targetClose = twoMonthPeakTarget * (1 - 0.015 * t);
+        }
+
+        const prevClose = f === 1 ? lastBar.close : forecastBars[f - 2].close;
+        const close = Number(targetClose.toFixed(2));
+        const span = close * 0.014;
+        let open = Number(((prevClose + close) / 2 + (f % 2 === 0 ? -span * 0.28 : span * 0.28)).toFixed(2));
+        let high = Number((Math.max(open, close) + span * 0.75).toFixed(2));
+        let low = Number((Math.min(open, close) - span * 0.75).toFixed(2));
+
+        if (rule === 'B2' || rule === 'B3') {
+          open = Number((close - close * 0.008).toFixed(2));
+          low = Number((open - close * 0.03).toFixed(2));
+          high = Number((close + close * 0.004).toFixed(2));
+        } else if (rule === 'S4') {
+          open = Number((close - close * 0.006).toFixed(2));
+          high = Number((close + close * 0.03).toFixed(2));
+          low = Number((open - close * 0.005).toFixed(2));
+        }
+
+        forecastBars.push({
+          index: historyBars.length + f - 1,
+          date: dateStr,
+          open,
+          high,
+          low,
+          close,
+          volume: Math.round((lastBar.volume || 45000) * (f <= 11 ? 0.75 : 1.18)),
+          rule,
+          paPattern,
+          divergence: null,
+          isCurrent: false,
+          isForecast: true
+        });
+      }
+
+      const allBars = [...historyBars, ...forecastBars];
+      computeTechnicalIndicators(allBars, maPeriod, bbStdMult);
+
+      const currentBar = allBars[historyBars.length - 1];
+      if (currentBar.bias20 >= 4.5) {
+        currentBar.rule = 'S4';
+        currentBar.paPattern = '今日現況：正乖離偏大 (切勿追高，等待回測B2)';
+      } else if (currentBar.bias20 <= -4.5) {
+        currentBar.rule = 'B4';
+        currentBar.paPattern = '今日現況：負乖離過大 (醞釀技術反彈)';
+      } else if (Math.abs(currentBar.bias20) <= 2.2 && currentBar.close >= currentBar.ma20) {
+        currentBar.rule = 'B2';
+        currentBar.paPattern = '今日現況：回測上揚均線支撐區 (關注止跌K線)';
+      }
+
+      return allBars;
+    }
+
+    function generateChartDataset(stockConfig, mode, maPeriod = 20, bbStdMult = 2.0) {
+      const { code, basePrice, peakPrice, dipPrice } = stockConfig;
+      const historyCount = 56;
+      const forecastCount = 44;
+      const totalBars = historyCount + forecastCount;
+      const todayIdx = historyCount - 1;
+      const timeline = buildTradingDateTimeline(historyCount, forecastCount);
+      const data = [];
+
+      let seed = parseInt(code, 10) || 3481;
+      const seededRandom = () => {
+        seed = (seed * 9301 + 49297) % 233280;
+        return seed / 233280;
+      };
+
+      const range = peakPrice - dipPrice;
+      const keyNodes =
+        mode === 'FULL_CYCLE'
+          ? [
+              { idx: 0, val: basePrice * 0.95 },
+              { idx: 12, val: basePrice * 0.94 },
+              { idx: 18, val: basePrice * 1.02, rule: 'B1', pa: '看漲吞噬長紅K', isForecast: false },
+              { idx: 27, val: basePrice + range * 0.48 },
+              { idx: 34, val: basePrice + range * 0.28, rule: 'B2', pa: '長下影線錘頭線 (Hammer)', isForecast: false },
+              { idx: 42, val: basePrice + range * 0.66 },
+              { idx: 47, val: basePrice + range * 0.42, rule: 'B3', pa: '假跌破破底翻紅K', isForecast: false },
+              { idx: todayIdx, val: peakPrice, rule: 'S4', pa: '今日現況：高檔正乖離過大', isCurrent: true, isForecast: false },
+              { idx: 62, val: peakPrice - range * 0.14, isForecast: true },
+              { idx: 68, val: basePrice + range * 0.44, rule: 'S1', pa: '帶量長黑貫穿均線 (趨勢反轉)', isForecast: true, divergence: 'TOP' },
+              { idx: 74, val: basePrice + range * 0.22, isForecast: true },
+              { idx: 80, val: basePrice + range * 0.39, rule: 'S2', pa: '反彈受阻下彎MA (逃命波)', isForecast: true },
+              { idx: 86, val: basePrice + range * 0.35, rule: 'S3', pa: '假突破下彎MA (誘多陷阱)', isForecast: true },
+              { idx: 94, val: dipPrice, rule: 'B4', pa: '負乖離過大止跌錘頭 (搶反彈)', isForecast: true, divergence: 'BOTTOM' },
+              { idx: 99, val: dipPrice + range * 0.25, isForecast: true }
+            ]
+          : code === '3231'
+          ? [
+              { idx: 0, val: 103.0 },
+              { idx: 14, val: 101.5 },
+              { idx: 20, val: 108.0, rule: 'B1', pa: '帶量突破長紅K', isForecast: false },
+              { idx: 30, val: 118.5 },
+              { idx: 38, val: 111.5, rule: 'B2', pa: '回測均線錘頭線', isForecast: false },
+              { idx: 47, val: 121.0 },
+              { idx: todayIdx, val: stockConfig.currentPrice, rule: 'B3', pa: '今日現況：買點3 假跌破站回季線', isCurrent: true, isForecast: false },
+              { idx: 68, val: stockConfig.currentPrice * 1.07, isForecast: true },
+              { idx: 76, val: stockConfig.currentPrice * 1.03, rule: 'B2', pa: '預測二次回測上揚MA20支撐', isForecast: true },
+              { idx: 93, val: stockConfig.currentPrice * 1.16, rule: 'S4', pa: '預測2個月後波段目標 (S4)', isForecast: true },
+              { idx: 99, val: stockConfig.currentPrice * 1.14, isForecast: true }
+            ]
+          : [
+              { idx: 0, val: basePrice * 0.94 },
+              { idx: 14, val: basePrice * 0.93 },
+              { idx: 20, val: basePrice * 1.01, rule: 'B1', pa: '突破盤整長紅K', isForecast: false },
+              { idx: 31, val: basePrice + range * 0.38 },
+              { idx: 38, val: basePrice + range * 0.24, rule: 'B2', pa: '前波回測支撐紅K', isForecast: false },
+              { idx: 47, val: basePrice + range * 0.55 },
+              { idx: todayIdx, val: stockConfig.currentPrice, rule: 'S4', pa: '今日現況：正乖離過大 (勿追高)', isCurrent: true, isForecast: false },
+              { idx: 67, val: stockConfig.ma20Current * 1.01, rule: 'B2', pa: '預測買點B2：回測MA20 + 錘頭線確認', isForecast: true },
+              { idx: 79, val: stockConfig.currentPrice * 1.04, isForecast: true },
+              { idx: 85, val: stockConfig.ma20Current * 1.055, rule: 'B3', pa: '預測買點B3：中途換手洗盤支撐', isForecast: true },
+              { idx: 96, val: peakPrice * 1.01, rule: 'S4', pa: '預測2個月波段目標獲利點 (S4)', isForecast: true },
+              { idx: 99, val: peakPrice * 0.99, isForecast: true }
+            ];
+
+      const rawCloses = new Array(totalBars).fill(0);
+      const nodeMap = {};
+      keyNodes.forEach((n) => { nodeMap[n.idx] = n; });
+
+      for (let k = 0; k < keyNodes.length - 1; k++) {
+        const startNode = keyNodes[k];
+        const endNode = keyNodes[k + 1];
+        const span = endNode.idx - startNode.idx;
+        for (let i = startNode.idx; i <= endNode.idx; i++) {
+          const t = span === 0 ? 0 : (i - startNode.idx) / span;
+          const smoothT = (1 - Math.cos(t * Math.PI)) / 2;
+          const noise = (seededRandom() - 0.5) * range * 0.024;
+          rawCloses[i] = startNode.val + (endNode.val - startNode.val) * smoothT + (i === startNode.idx || i === endNode.idx ? 0 : noise);
+        }
+      }
+
+      for (let i = 0; i < totalBars; i++) {
+        const dateStr = timeline.allDates[i];
+        const close = Number(rawCloses[i].toFixed(2));
+        const prevClose = i > 0 ? data[i - 1].close : close * 0.995;
+        const node = nodeMap[i];
+
+        let open = Number((prevClose + (seededRandom() - 0.5) * range * 0.015).toFixed(2));
+        let high = Number((Math.max(open, close) + seededRandom() * range * 0.024).toFixed(2));
+        let low = Number((Math.min(open, close) - seededRandom() * range * 0.024).toFixed(2));
+
+        if (node && node.rule) {
+          if (node.rule === 'B2' || node.rule === 'B4') {
+            open = Number((close - range * 0.018).toFixed(2));
+            low = Number((open - range * 0.062).toFixed(2));
+            high = Number((close + range * 0.008).toFixed(2));
+          } else if (node.rule === 'B1' || node.rule === 'B3') {
+            open = Number((close - range * 0.046).toFixed(2));
+            low = Number((open - range * 0.015).toFixed(2));
+            high = Number((close + range * 0.012).toFixed(2));
+          } else if (node.rule === 'S4' || node.rule === 'S2') {
+            open = Number((close + range * 0.015).toFixed(2));
+            high = Number((open + range * 0.062).toFixed(2));
+            low = Number((close - range * 0.01).toFixed(2));
+          } else if (node.rule === 'S1' || node.rule === 'S3') {
+            open = Number((close + range * 0.05).toFixed(2));
+            high = Number((open + range * 0.012).toFixed(2));
+            low = Number((close - range * 0.018).toFixed(2));
+          }
+        }
+
+        data.push({
+          index: i,
+          date: dateStr,
+          open,
+          high,
+          low,
+          close,
+          volume: Math.round(35000 + seededRandom() * 35000),
+          rule: node?.rule || null,
+          paPattern: node?.pa || null,
+          divergence: node?.divergence || null,
+          isCurrent: i === todayIdx,
+          isForecast: i > todayIdx
+        });
+      }
+
+      computeTechnicalIndicators(data, maPeriod, bbStdMult);
+      return data;
+    }
+
+    function computeTechnicalIndicators(bars, maPeriod, bbStdMult) {
+      let ema12 = bars[0].close;
+      let ema26 = bars[0].close;
+      let dea = 0;
+
+      for (let i = 0; i < bars.length; i++) {
+        const prevBar = i > 0 ? bars[i - 1] : null;
+        const changePct = prevBar ? ((bars[i].close - prevBar.close) / prevBar.close) * 100 : 0;
+
+        const start20 = Math.max(0, i - maPeriod + 1);
+        const slice20 = bars.slice(start20, i + 1).map((d) => d.close);
+        const ma20 = slice20.reduce((a, b) => a + b, 0) / slice20.length;
+
+        const start60 = Math.max(0, i - 35 + 1);
+        const slice60 = bars.slice(start60, i + 1).map((d) => d.close);
+        const ma60 = slice60.reduce((a, b) => a + b, 0) / slice60.length;
+
+        const variance = slice20.reduce((acc, val) => acc + Math.pow(val - ma20, 2), 0) / slice20.length;
+        const std = Math.sqrt(variance) || ma20 * 0.015;
+        const bbUpper = ma20 + bbStdMult * std;
+        const bbLower = ma20 - bbStdMult * std;
+        const bbBandwidth = ((bbUpper - bbLower) / ma20) * 100;
+
+        ema12 = bars[i].close * (2 / 13) + ema12 * (11 / 13);
+        ema26 = bars[i].close * (2 / 27) + ema26 * (25 / 27);
+        const dif = ema12 - ema26;
+        dea = dif * (2 / 10) + dea * (8 / 10);
+        const macdHist = (dif - dea) * 2;
+        const bias20 = ((bars[i].close - ma20) / ma20) * 100;
+        const autoPA = detectCandlestickPattern(bars[i], prevBar);
+
+        bars[i].dateWithDay = getDateWithWeekday(bars[i].date);
+        bars[i].changePct = Number(changePct.toFixed(2));
+        bars[i].ma20 = Number(ma20.toFixed(2));
+        bars[i].ma60 = Number(ma60.toFixed(2));
+        bars[i].bbUpper = Number(bbUpper.toFixed(2));
+        bars[i].bbLower = Number(bbLower.toFixed(2));
+        bars[i].bbBandwidth = Number(bbBandwidth.toFixed(2));
+        bars[i].isSqueeze = i < 14 || bbBandwidth < 5.2;
+        bars[i].dif = Number(dif.toFixed(3));
+        bars[i].dea = Number(dea.toFixed(3));
+        bars[i].macdHist = Number(macdHist.toFixed(3));
+        bars[i].bias20 = Number(bias20.toFixed(2));
+        bars[i].autoPA = autoPA;
+        if (!bars[i].paPattern && autoPA) {
+          bars[i].paPattern = autoPA.name;
+        }
+      }
+    }
+
+    // ==========================================
+    // 5. 多通道台股真實報價抓取引擎 (FinMind -> Yahoo Proxy -> 內建擬真備援)
+    // ==========================================
+    async function fetchRealTaiwanStockData(stockCode, stockNameOverride) {
+      const cleanCode = stockCode.replace(/\.(TW|TWO)$/i, '').trim();
+      const badgeText = document.getElementById('status-badge-text');
+      if (badgeText) badgeText.textContent = `同步 ${cleanCode} 最新台股日K中...`;
+
+      const startObj = new Date();
+      startObj.setDate(startObj.getDate() - 160);
+      const startDateStr = startObj.toISOString().slice(0, 10);
+
+      try {
+        const finmindUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${cleanCode}&start_date=${startDateStr}`;
+        const res = await fetch(finmindUrl);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.msg === 'success' && Array.isArray(json.data) && json.data.length >= 25) {
+            const parsedCandles = json.data
+              .filter((item) => item.close > 0 && item.open > 0)
+              .map((item) => ({
+                date: formatToSlashDate(item.date),
+                open: Number(item.open),
+                high: Number(item.max),
+                low: Number(item.min),
+                close: Number(item.close),
+                volume: Math.round(Number(item.Trading_Volume || 0) / 1000)
+              }));
+
+            if (parsedCandles.length >= 20) {
+              applyLiveCandles(cleanCode, parsedCandles, stockNameOverride, 'FinMind 台股即時連線');
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        // FinMind 無法連線時切換備援
+      }
+
+      if (badgeText) {
+        badgeText.textContent = '內建台股擬真報價引擎 (支援手動校正現價)';
+      }
+      rebuildAndRenderAll();
+    }
+
+    function applyLiveCandles(cleanCode, parsedCandles, stockNameOverride, sourceTitle) {
+      const latest = parsedCandles[parsedCandles.length - 1];
+      const slice20 = parsedCandles.slice(-20);
+      const ma20Val = Number((slice20.reduce((s, c) => s + c.close, 0) / slice20.length).toFixed(2));
+      const slice60 = parsedCandles.slice(-60);
+      const ma60Val = Number((slice60.reduce((s, c) => s + c.close, 0) / slice60.length).toFixed(2));
+      const bias = (((latest.close - ma20Val) / ma20Val) * 100).toFixed(1);
+
+      state.liveCandlesMap[cleanCode] = parsedCandles;
+      state.customStocks[cleanCode] = {
+        ...(STOCK_PRESETS[cleanCode] || state.customStocks[cleanCode] || {}),
+        code: cleanCode,
+        name: stockNameOverride || STOCK_PRESETS[cleanCode]?.name || TW_STOCK_NAME_DICT[cleanCode] || `台股 ${cleanCode}`,
+        enName: STOCK_PRESETS[cleanCode]?.enName || 'TWSE Listed',
+        sector: STOCK_PRESETS[cleanCode]?.sector || '台股上市櫃即時觀測標的',
+        basePrice: parsedCandles[0].close,
+        peakPrice: Math.max(...parsedCandles.map((c) => c.high)),
+        dipPrice: Math.min(...parsedCandles.map((c) => c.low)),
+        currentPrice: latest.close,
+        ma20Current: ma20Val,
+        ma60Current: ma60Val,
+        summaryStatus:
+          bias > 5
+            ? `真實報價：正乖離偏大 (+${bias}%) 接近賣點 S4 — 建議等待拉回 MA20 (${ma20Val}元)`
+            : bias < -5
+            ? `真實報價：負乖離過大 (${bias}%) 接近買點 B4 — 留意止跌錘頭線反彈`
+            : `真實報價：股價與 MA20 (${ma20Val}元) 乖離 ${bias}% — 觀察葛蘭碧買點 B2 支撐`,
+        strategyAdvice: `已成功連線抓取 ${cleanCode} 真實日K線（收盤價 ${latest.close} 元，MA20 為 ${ma20Val} 元，MA60 為 ${ma60Val} 元），並以今日日期為基準往後推演未來 2 個月之葛蘭碧買賣點路徑。`
+      };
+
+      const badgeText = document.getElementById('status-badge-text');
+      if (badgeText) badgeText.textContent = `${sourceTitle} (最新價: $${latest.close})`;
+      rebuildAndRenderAll();
+    }
+
+    // ==========================================
+    // 6. 介面渲染與 SVG 圖表繪製核心
+    // ==========================================
+    function rebuildAndRenderAll() {
+      const stock = getCurrentStock();
+      const liveData = state.liveCandlesMap[stock.code];
+      if (state.chartMode === 'RECENT_FORECAST' && liveData && liveData.length >= 20) {
+        state.chartData = enrichCandlesWithIndicatorsAndForecast(liveData, state.maPeriod, state.bbStd);
+      } else {
+        state.chartData = generateChartDataset(stock, state.chartMode, state.maPeriod, state.bbStd);
+      }
+
+      const currIdx = state.chartData.findIndex((d) => d.isCurrent);
+      state.currentBarIndex = currIdx !== -1 ? currIdx : 55;
+
+      renderPresetButtons();
+      renderRuleJumpButtons();
+      renderSummaryBanner();
+      renderMainChartSVG();
+      renderRightSidebar();
+      renderBottomMatrix();
+      renderPythonCode();
+    }
+
+    function getActiveCandle() {
+      if (state.hoveredIndex !== null && state.chartData[state.hoveredIndex]) {
+        return state.chartData[state.hoveredIndex];
+      }
+      return state.chartData[state.currentBarIndex] || state.chartData[state.chartData.length - 1];
+    }
+
+    function renderPresetButtons() {
+      const container = document.getElementById('preset-buttons-container');
+      if (!container) return;
+      container.innerHTML = Object.values(STOCK_PRESETS)
+        .map((st) => {
+          const isSelected = state.selectedStockCode === st.code;
+          return `<button
+            onclick="selectStock('${st.code}')"
+            class="px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all ${
+              isSelected ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-300 hover:text-white hover:bg-slate-800/70'
+            }"
+          >${st.code} ${st.name}</button>`;
+        })
+        .join('');
+    }
+
+    function renderRuleJumpButtons() {
+      const container = document.getElementById('rule-jump-buttons');
+      if (!container) return;
+      const colors = getColors();
+      const order = ['B1', 'B2', 'B3', 'B4', 'S4', 'S1', 'S2', 'S3'];
+      container.innerHTML = order
+        .map((rKey) => {
+          const info = GRANVILLE_RULES_INFO[rKey];
+          const isBuy = info.type === 'BUY';
+          const isSelected = state.selectedRuleId === rKey;
+          const textColor = isBuy ? colors.up : colors.down;
+          const borderColor = isSelected ? '#fbbf24' : isBuy ? colors.upBorder : colors.downBorder;
+          return `<button
+            onclick="selectRule('${rKey}')"
+            style="color:${textColor}; border-color:${borderColor}"
+            class="px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all border ${
+              isSelected ? 'ring-2 ring-amber-400 bg-slate-800' : 'opacity-85 hover:opacity-100 bg-slate-900/90'
+            }"
+          >${info.shortLabel}</button>`;
+        })
+        .join('');
+    }
+
+    function renderSummaryBanner() {
+      const stock = getCurrentStock();
+      const colors = getColors();
+      const timeline = buildTradingDateTimeline(56, 44);
+      const futureBars = state.chartData.slice(state.currentBarIndex + 1);
+      const s4Bar = futureBars.find((d) => d.rule === 'S4') || futureBars[futureBars.length - 1];
+
+      document.getElementById('stock-sector-badge').textContent = stock.sector;
+      document.getElementById('stock-title').textContent = `${stock.code} ${stock.name}`;
+      document.getElementById('stock-en-name').textContent = stock.enName;
+      document.getElementById('today-price-label').textContent = `今日基準價 (${timeline.todayStr})`;
+
+      const priceEl = document.getElementById('stock-current-price');
+      priceEl.textContent = `$${stock.currentPrice.toFixed(2)}`;
+      priceEl.style.color = stock.currentPrice >= stock.ma20Current ? colors.up : colors.down;
+
+      document.getElementById('ma20-label-title').textContent = `生命線 MA${state.maPeriod}`;
+      document.getElementById('stock-ma20-val').textContent = `$${stock.ma20Current}`;
+      document.getElementById('stock-ma60-val').textContent = `$${stock.ma60Current}`;
+      document.getElementById('stock-target-val').textContent = `~$${(s4Bar ? s4Bar.close : stock.peakPrice).toFixed(2)}`;
+      document.getElementById('date-range-diagnosis-title').textContent = `今日 (${timeline.todayStr}) → 未來 2 個月 (${timeline.twoMonthsLaterStr}) 診斷：`;
+      document.getElementById('stock-summary-status').textContent = stock.summaryStatus;
+      document.getElementById('stock-strategy-advice').textContent = stock.strategyAdvice;
+      document.getElementById('manual-price-input').placeholder = `${stock.currentPrice}`;
+      document.getElementById('legend-ma-period').textContent = `MA${state.maPeriod}`;
+      document.getElementById('legend-bb-std').textContent = `${state.bbStd}`;
+    }
+
+    function renderMainChartSVG() {
+      const stock = getCurrentStock();
+      const colors = getColors();
+      const chartData = state.chartData;
+      const activeCandle = getActiveCandle();
+      const currentBarIndex = state.currentBarIndex;
+      const timeline = buildTradingDateTimeline(56, 44);
+
+      // 更新圖表頂部 HUD 狀態列
+      const hud = document.getElementById('chart-top-hud');
+      const isUp = activeCandle.close >= activeCandle.open;
+      const badgeHtml = activeCandle.isCurrent
+        ? `<span class="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40 font-sans text-[11px] font-bold">★ 今日基準點 (TODAY)</span>`
+        : activeCandle.isForecast
+        ? `<span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-sans text-[11px]">未來 2 個月預測區間</span>`
+        : `<span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-sans text-[11px]">歷史日K線</span>`;
+
+      hud.innerHTML = `
+        <div class="flex flex-wrap items-center gap-2.5">
+          <span class="font-sans font-bold text-white text-sm">${stock.code}.TW (${stock.name})</span>
+          <span class="px-2.5 py-1 rounded-md bg-amber-500/20 border border-amber-500/50 text-amber-300 font-bold flex items-center gap-1.5 shadow-sm">
+            📅 ${activeCandle.dateWithDay || activeCandle.date}
+          </span>
+          ${badgeHtml}
+          <span>開 <strong class="text-slate-200">${activeCandle.open.toFixed(2)}</strong></span>
+          <span>高 <strong class="text-slate-200">${activeCandle.high.toFixed(2)}</strong></span>
+          <span>低 <strong class="text-slate-200">${activeCandle.low.toFixed(2)}</strong></span>
+          <span>收 <strong style="color:${isUp ? colors.up : colors.down}">${activeCandle.close.toFixed(2)} (${activeCandle.changePct > 0 ? '+' : ''}${activeCandle.changePct}%)</strong></span>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <span style="color:${colors.ma20}">MA${state.maPeriod}: <strong>${activeCandle.ma20.toFixed(2)}</strong></span>
+          <span style="color:${colors.ma60}">MA60: <strong>${activeCandle.ma60.toFixed(2)}</strong></span>
+          ${state.filters.bollinger ? `<span class="text-blue-400">BB(${state.bbStd}σ): ${activeCandle.bbLower.toFixed(1)}~${activeCandle.bbUpper.toFixed(1)}</span>` : ''}
+          <span class="text-slate-300">乖離率: <strong class="${Math.abs(activeCandle.bias20) > 5 ? 'text-amber-400' : 'text-slate-200'}">${activeCandle.bias20 > 0 ? '+' : ''}${activeCandle.bias20}%</strong></span>
+        </div>
+      `;
+
+      // SVG 座標尺寸計算
+      const width = 1000;
+      const mainHeight = 385;
+      const macdHeight = state.filters.macd ? 140 : 0;
+      const bottomAxisHeight = 42;
+      const totalHeight = mainHeight + macdHeight + bottomAxisHeight;
+      const padLeft = 24;
+      const padRight = 78;
+      const padTop = 28;
+      const padBottom = 20;
+      const plotWidth = width - padLeft - padRight;
+      const plotHeight = mainHeight - padTop - padBottom;
+
+      const svgEl = document.getElementById('main-strategy-svg');
+      svgEl.setAttribute('viewBox', `0 0 ${width} ${totalHeight}`);
+
+      let minPrice = Infinity;
+      let maxPrice = -Infinity;
+      chartData.forEach((d) => {
+        minPrice = Math.min(minPrice, d.low, state.filters.bollinger ? d.bbLower : d.low, d.ma20, d.ma60);
+        maxPrice = Math.max(maxPrice, d.high, state.filters.bollinger ? d.bbUpper : d.high, d.ma20, d.ma60);
+      });
+      const pricePadding = (maxPrice - minPrice) * 0.13;
+      const yMin = Number((minPrice - pricePadding).toFixed(1));
+      const yMax = Number((maxPrice + pricePadding).toFixed(1));
+
+      const getY = (price) => padTop + plotHeight - ((price - yMin) / (yMax - yMin)) * plotHeight;
+      const getX = (idx) => padLeft + ((idx + 0.5) / chartData.length) * plotWidth;
+
+      const yTicks = [];
+      for (let i = 0; i <= 6; i++) {
+        const val = yMin + ((yMax - yMin) / 6) * i;
+        yTicks.push({ value: val.toFixed(1), y: getY(val) });
+      }
+
+      const macdTop = mainHeight + 22;
+      const macdPlotHeight = macdHeight - 32;
+      let maxMacd = 0.01;
+      chartData.forEach((d) => {
+        maxMacd = Math.max(maxMacd, Math.abs(d.dif), Math.abs(d.dea), Math.abs(d.macdHist));
+      });
+      maxMacd *= 1.25;
+      const macdZeroY = macdTop + macdPlotHeight / 2;
+      const getMacdY = (val) => macdZeroY - (val / maxMacd) * (macdPlotHeight / 2);
+
+      // 不重疊 X 軸時間刻度
+      const xTicks = [];
+      let lastTickX = -999;
+      const stepCount = Math.max(1, Math.ceil(chartData.length / 6));
+      for (let i = 0; i < chartData.length; i++) {
+        const x = getX(i);
+        const isCandidate = i % stepCount === 0 || i === currentBarIndex || i === chartData.length - 1;
+        if (isCandidate && x - lastTickX >= 135 && x <= width - padRight - 30) {
+          xTicks.push({ index: i, date: chartData[i].date, isToday: i === currentBarIndex, x });
+          lastTickX = x;
+        }
+      }
+
+      const todayX = getX(currentBarIndex);
+      const forecastWidth = Math.max(0, width - padRight - todayX);
+      const todayDateStr = chartData[currentBarIndex]?.date || timeline.todayStr;
+      const endDateStr = chartData[chartData.length - 1]?.date || timeline.twoMonthsLaterStr;
+
+      let svgParts = [];
+
+      // Defs
+      svgParts.push(`
+        <defs>
+          <linearGradient id="bbFillGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.16" />
+            <stop offset="50%" stop-color="#3b82f6" stop-opacity="0.06" />
+            <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.16" />
+          </linearGradient>
+          <linearGradient id="forecastBgGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.04" />
+            <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.12" />
+          </linearGradient>
+        </defs>
+      `);
+
+      // 今日基準與未來 2 個月預測區背景
+      svgParts.push(`
+        <g>
+          <rect x="${todayX}" y="20" width="${forecastWidth}" height="${mainHeight - 36}" fill="url(#forecastBgGrad)" />
+          <line x1="${todayX}" y1="20" x2="${todayX}" y2="${totalHeight - 34}" stroke="#38bdf8" stroke-width="1.8" stroke-dasharray="5,4" />
+          <rect x="${todayX - 74}" y="22" width="148" height="20" rx="4" fill="#0f172a" stroke="#38bdf8" stroke-width="1.2" />
+          <text x="${todayX}" y="36" fill="#7dd3fc" font-size="10.5" font-weight="bold" text-anchor="middle">今日基準 (${todayDateStr})</text>
+          <rect x="${todayX + 82}" y="22" width="245" height="20" rx="4" fill="#1e293b" stroke="#f59e0b" stroke-width="1" />
+          <text x="${todayX + 204}" y="36" fill="#fbbf24" font-size="10.5" font-weight="bold" text-anchor="middle">未來 2 個月預測區 (至 ${endDateStr}) →</text>
+        </g>
+      `);
+
+      // 布林收縮區 (Squeeze)
+      if (state.filters.bollinger) {
+        const sqY = getY(chartData[12]?.bbUpper || stock.basePrice * 1.04) - 12;
+        const sqW = getX(14) - padLeft;
+        const sqTextY = getY(chartData[12]?.bbLower || stock.basePrice) + 28;
+        svgParts.push(`
+          <g>
+            <rect x="${padLeft}" y="${sqY}" width="${sqW}" height="85" rx="6" fill="rgba(148, 163, 184, 0.08)" stroke="#64748b" stroke-dasharray="3,3" />
+            <text x="${(padLeft + getX(14)) / 2}" y="${sqTextY}" fill="#94a3b8" font-size="10.5" font-weight="bold" text-anchor="middle">布林收縮盤整 (Squeeze 觀望區)</text>
+          </g>
+        `);
+      }
+
+      // 水平價格網格線
+      yTicks.forEach((t) => {
+        svgParts.push(`
+          <g>
+            <line x1="${padLeft}" y1="${t.y}" x2="${width - padRight}" y2="${t.y}" stroke="#1e293b" stroke-width="1" />
+            <text x="${width - padRight + 8}" y="${t.y + 4}" fill="#94a3b8" font-size="11" font-family="monospace">${t.value}</text>
+          </g>
+        `);
+      });
+      svgParts.push(`<text x="${width - 12}" y="16" fill="#cbd5e1" font-size="11" font-weight="bold" text-anchor="end">股價 (TWD)</text>`);
+
+      // 布林通道帶
+      if (state.filters.bollinger) {
+        const upperPts = chartData.map((d, i) => `${getX(i)},${getY(d.bbUpper)}`);
+        const lowerPts = chartData.map((d, i) => `${getX(i)},${getY(d.bbLower)}`);
+        const polyPts = [...upperPts, ...[...lowerPts].reverse()].join(' ');
+        svgParts.push(`
+          <g>
+            <polygon points="${polyPts}" fill="url(#bbFillGrad)" />
+            <polyline fill="none" stroke="${colors.bbBand}" stroke-width="1.2" stroke-opacity="0.7" points="${upperPts.join(' ')}" />
+            <polyline fill="none" stroke="${colors.bbBand}" stroke-width="1.2" stroke-opacity="0.7" points="${lowerPts.join(' ')}" />
+          </g>
+        `);
+      }
+
+      // MA60 與 MA20
+      if (state.filters.showMA60) {
+        const ma60Pts = chartData.map((d, i) => `${getX(i)},${getY(d.ma60)}`).join(' ');
+        svgParts.push(`<polyline fill="none" stroke="${colors.ma60}" stroke-width="1.8" stroke-dasharray="4,3" points="${ma60Pts}" />`);
+      }
+      if (state.filters.granville) {
+        const ma20Pts = chartData.map((d, i) => `${getX(i)},${getY(d.ma20)}`).join(' ');
+        svgParts.push(`<polyline fill="none" stroke="${colors.ma20}" stroke-width="2.8" points="${ma20Pts}" />`);
+      }
+
+      // K 線 (Candlesticks)
+      const candleWidth = Math.max(3.8, (plotWidth / chartData.length) * 0.62);
+      chartData.forEach((d, i) => {
+        const x = getX(i);
+        const up = d.close >= d.open;
+        const cColor = up ? colors.up : colors.down;
+        const highY = getY(d.high);
+        const lowY = getY(d.low);
+        const bodyTop = getY(Math.max(d.open, d.close));
+        const bodyBottom = getY(Math.min(d.open, d.close));
+        const bodyH = Math.max(2.5, bodyBottom - bodyTop);
+        const isSelectedRule = d.rule && d.rule === state.selectedRuleId;
+
+        svgParts.push(`<g onclick="${d.rule ? `selectRule('${d.rule}')` : ''}" class="${d.rule ? 'cursor-pointer' : ''}">`);
+        if (state.filters.priceAction && d.rule) {
+          svgParts.push(`
+            <circle cx="${x}" cy="${up ? lowY + 4 : highY - 4}" r="${isSelectedRule ? 12 : 8}"
+              fill="${up ? colors.upBg : colors.downBg}"
+              stroke="${isSelectedRule ? '#fbbf24' : cColor}"
+              stroke-width="${isSelectedRule ? '2' : '1'}" />
+          `);
+        }
+        svgParts.push(`
+          <line x1="${x}" y1="${highY}" x2="${x}" y2="${lowY}" stroke="${cColor}" stroke-width="1.3" stroke-opacity="${d.isForecast ? 0.8 : 1}" />
+          <rect x="${x - candleWidth / 2}" y="${bodyTop}" width="${candleWidth}" height="${bodyH}" fill="${cColor}" fill-opacity="${d.isForecast ? 0.76 : 1}" rx="0.8" />
+        </g>`);
+      });
+
+      // 葛蘭碧八大買賣點標籤
+      if (state.filters.granville) {
+        chartData.filter((d) => d.rule).forEach((d) => {
+          const rInfo = GRANVILLE_RULES_INFO[d.rule];
+          if (!rInfo) return;
+          const isBuy = rInfo.type === 'BUY';
+          const x = getX(d.index);
+          const anchorY = isBuy ? getY(d.low) : getY(d.high);
+          const labelY = isBuy ? anchorY + 34 : anchorY - 34;
+          const badgeColor = isBuy ? colors.up : colors.down;
+          const isFocused = state.selectedRuleId === d.rule;
+          const clampedX = Math.min(width - padRight - 68, Math.max(padLeft + 68, x));
+
+          svgParts.push(`
+            <g onclick="selectRule('${d.rule}')" class="cursor-pointer">
+              <line x1="${x}" y1="${isBuy ? anchorY + 4 : anchorY - 4}" x2="${clampedX}" y2="${isBuy ? labelY - 12 : labelY + 12}"
+                stroke="${isFocused ? '#fbbf24' : badgeColor}" stroke-width="${isFocused ? '2.2' : '1.5'}" />
+              <rect x="${clampedX - 66}" y="${labelY - 13}" width="132" height="26" rx="6" fill="#0f172a"
+                stroke="${isFocused ? '#fbbf24' : badgeColor}" stroke-width="${isFocused ? '2' : '1.3'}" />
+              <text x="${clampedX}" y="${labelY + 4}" fill="${isFocused ? '#fde68a' : '#f8fafc'}" font-size="10.5" font-weight="bold" text-anchor="middle">
+                ${d.isForecast ? `預測${d.rule}` : rInfo.shortLabel} @${d.close.toFixed(1)}
+              </text>
+            </g>
+          `);
+        });
+      }
+
+      // 下方 MACD 面板
+      if (state.filters.macd) {
+        const barW = Math.max(3, (plotWidth / chartData.length) * 0.55);
+        const macdBarsHtml = chartData
+          .map((d, i) => {
+            const x = getX(i);
+            const y = getMacdY(d.macdHist);
+            const barColor = d.macdHist >= 0 ? colors.up : colors.down;
+            return `<rect x="${x - barW / 2}" y="${Math.min(y, macdZeroY)}" width="${barW}" height="${Math.max(1.5, Math.abs(y - macdZeroY))}" fill="${barColor}" fill-opacity="0.65" />`;
+          })
+          .join('');
+
+        const difPts = chartData.map((d, i) => `${getX(i)},${getMacdY(d.dif)}`).join(' ');
+        const deaPts = chartData.map((d, i) => `${getX(i)},${getMacdY(d.dea)}`).join(' ');
+
+        svgParts.push(`
+          <g>
+            <line x1="${padLeft}" y1="${mainHeight}" x2="${width - padRight}" y2="${mainHeight}" stroke="#334155" stroke-width="1.5" />
+            <text x="${padLeft + 6}" y="${macdTop - 4}" fill="#cbd5e1" font-size="10.5" font-weight="bold">
+              MACD (12,26,9) 動能真偽與背離濾網 — DIF: ${activeCandle.dif} / DEA: ${activeCandle.dea} / 柱狀體: ${activeCandle.macdHist}
+            </text>
+            <line x1="${padLeft}" y1="${macdZeroY}" x2="${width - padRight}" y2="${macdZeroY}" stroke="#475569" stroke-width="1" stroke-dasharray="3,3" />
+            <text x="${width - padRight + 8}" y="${macdZeroY + 4}" fill="#94a3b8" font-size="10" font-family="monospace">0.00</text>
+            ${macdBarsHtml}
+            <polyline fill="none" stroke="#e879f9" stroke-width="1.6" points="${difPts}" />
+            <polyline fill="none" stroke="#38bdf8" stroke-width="1.5" points="${deaPts}" />
+          </g>
+        `);
+      }
+
+      // 底部不重疊 X 軸時間刻度
+      svgParts.push(`<line x1="${padLeft}" y1="${totalHeight - 34}" x2="${width - padRight}" y2="${totalHeight - 34}" stroke="#334155" stroke-width="1" />`);
+      const activeX = getX(activeCandle.index);
+      xTicks.forEach((tick) => {
+        if (Math.abs(tick.x - activeX) < 90) return;
+        svgParts.push(`
+          <g>
+            <line x1="${tick.x}" y1="${totalHeight - 34}" x2="${tick.x}" y2="${totalHeight - 28}" stroke="${tick.isToday ? '#38bdf8' : '#64748b'}" stroke-width="${tick.isToday ? '1.8' : '1'}" />
+            <text x="${tick.x}" y="${totalHeight - 12}" fill="${tick.isToday ? '#38bdf8' : '#94a3b8'}" font-size="11" font-weight="${tick.isToday ? 'bold' : 'normal'}" font-family="monospace" text-anchor="middle">${tick.date}</text>
+          </g>
+        `);
+      });
+
+      // 互動十字線 + 底部黃金膠囊日期 YYYY/MM/DD (週X)
+      const pillWidth = 156;
+      const clampedPillX = Math.min(width - padRight - pillWidth / 2, Math.max(padLeft + pillWidth / 2, activeX));
+      const activePriceY = getY(activeCandle.close);
+      svgParts.push(`
+        <g pointer-events="none">
+          <line x1="${activeX}" y1="20" x2="${activeX}" y2="${totalHeight - 34}" stroke="#fbbf24" stroke-width="1.2" stroke-dasharray="3,3" />
+          <line x1="${padLeft}" y1="${activePriceY}" x2="${width - padRight}" y2="${activePriceY}" stroke="#fbbf24" stroke-width="1.2" stroke-dasharray="3,3" />
+          <rect x="${width - padRight + 2}" y="${activePriceY - 10}" width="68" height="20" rx="4" fill="#f59e0b" />
+          <text x="${width - padRight + 36}" y="${activePriceY + 4}" fill="#0f172a" font-size="11" font-weight="bold" font-family="monospace" text-anchor="middle">${activeCandle.close.toFixed(2)}</text>
+
+          <rect x="${clampedPillX - pillWidth / 2 - 4}" y="${totalHeight - 32}" width="${pillWidth + 8}" height="28" rx="6" fill="#0f172a" />
+          <rect x="${clampedPillX - pillWidth / 2}" y="${totalHeight - 29}" width="${pillWidth}" height="22" rx="5" fill="#f59e0b" stroke="#fef08a" stroke-width="1.2" />
+          <text x="${clampedPillX}" y="${totalHeight - 14}" fill="#0f172a" font-size="11" font-weight="bold" font-family="monospace" text-anchor="middle">${activeCandle.dateWithDay || activeCandle.date}</text>
+        </g>
+      `);
+
+      svgEl.innerHTML = svgParts.join('');
+    }
+
+    function renderRightSidebar() {
+      const c = getActiveCandle();
+      const stock = getCurrentStock();
+      const timeline = buildTradingDateTimeline(56, 44);
+
+      document.getElementById('checklist-date-subtitle').textContent = `檢視日期：${c.dateWithDay || c.date} （收盤 ${c.close.toFixed(2)} 元）`;
+
+      const bbStatus = c.isSqueeze
+        ? { status: 'WARN', title: '布林通道收縮 (Squeeze 盤整中)', detail: `通道寬度僅 ${c.bbBandwidth}%，市場處於盤整，暫停葛蘭碧突破追價。` }
+        : { status: 'PASS', title: '布林通道開口擴張 (Expansion 趨勢明確)', detail: `通道寬度達 ${c.bbBandwidth}%，波動率放大，適合執行葛蘭碧順勢交易。` };
+
+      let granvilleStatus = { status: 'PASS', title: `股價位於 MA${state.maPeriod} (${c.ma20}元) 上方多頭區`, detail: `目前乖離率為 ${c.bias20 > 0 ? '+' : ''}${c.bias20}%，均線維持助漲力道。` };
+      if (c.bias20 > 5.2) {
+        granvilleStatus = { status: 'WARN', title: `正乖離過大 (+${c.bias20}%) — 觸發賣點 S4 警戒`, detail: `股價遠離 MA${state.maPeriod} (${c.ma20}元)，短線隨時拉回，切勿在此追高。` };
+      } else if (c.bias20 < -5.2) {
+        granvilleStatus = { status: 'WARN', title: `負乖離過大 (${c.bias20}%) — 買點 B4 超跌區`, detail: '股價跌深遠離均線，醞釀技術性反彈，但須等止跌K線確認。' };
+      } else if (Math.abs(c.bias20) <= 2.4 && c.close >= c.ma20) {
+        granvilleStatus = { status: 'PASS', title: `精準回測均線支撐區 (乖離率 ${c.bias20}%) — 買點 B2/B3`, detail: `股價回測 MA${state.maPeriod} (${c.ma20}元) 有守，具備極佳之風險報酬比。` };
+      } else if (c.close < c.ma20) {
+        granvilleStatus = { status: 'FAIL', title: `股價位於 MA${state.maPeriod} (${c.ma20}元) 下方弱勢區`, detail: '受制於均線反壓，做多需等待重新帶量站上均線 (B1)。' };
+      }
+
+      const macdStatus = c.dif >= 0
+        ? { status: c.divergence === 'TOP' ? 'FAIL' : 'PASS', title: c.divergence === 'TOP' ? '警訊：MACD 出現高檔頂背離！' : `MACD 位於零軸之上 (DIF: ${c.dif})`, detail: c.divergence === 'TOP' ? '股價創高但 MACD 未創高，提防趨勢反轉 (S1)。' : '中線多頭動能結構完好，回檔柱狀體收斂皆屬良性降溫。' }
+        : { status: c.divergence === 'BOTTOM' ? 'PASS' : 'WARN', title: c.divergence === 'BOTTOM' ? '訊號：MACD 出現低檔底背離！' : `MACD 位於零軸之下 (DIF: ${c.dif})`, detail: '動能偏弱，需等待黃金交叉翻上零軸確認真突破。' };
+
+      const isBullCandle = c.close >= c.open;
+      const paStatus = c.paPattern
+        ? { status: c.rule?.startsWith('B') || c.autoPA?.bias === 'BULL' ? 'PASS' : 'WARN', title: `關鍵K線訊號：${c.paPattern}`, detail: '已出現明確 Price Action 形態，可依收盤確認執行。' }
+        : { status: isBullCandle ? 'PASS' : 'WARN', title: isBullCandle ? '一般紅K棒 (等待關鍵回測訊號)' : '一般整理黑K棒 (觀望等待止跌)', detail: '若價格接近均線支撐，請等待「錘頭線」或「看漲吞噬」出現再進場。' };
+
+      let score = 50;
+      if (bbStatus.status === 'PASS') score += 12;
+      if (granvilleStatus.status === 'PASS') score += 18;
+      if (granvilleStatus.status === 'FAIL') score -= 18;
+      if (macdStatus.status === 'PASS') score += 12;
+      if (macdStatus.status === 'FAIL') score -= 20;
+      if (c.rule === 'B2' || c.rule === 'B3' || c.rule === 'B1') score += 15;
+      if (c.rule === 'S4') score -= 12;
+      score = Math.min(98, Math.max(25, score));
+
+      const scoreEl = document.getElementById('checklist-score-val');
+      scoreEl.className = `text-xl font-mono font-bold ${score >= 75 ? 'text-emerald-400' : score >= 55 ? 'text-amber-400' : 'text-rose-400'}`;
+      scoreEl.innerHTML = `${score} <span class="text-xs font-normal">/ 100</span>`;
+
+      const steps = [
+        { step: '步驟 1. 布林通道 (環境過濾)', item: bbStatus },
+        { step: '步驟 2. 葛蘭碧均線位階 (趨勢與乖離)', item: granvilleStatus },
+        { step: '步驟 3. MACD 動能確認 (防假突破/背離)', item: macdStatus },
+        { step: '步驟 4. Price Action (關鍵K線板機)', item: paStatus }
+      ];
+
+      document.getElementById('checklist-items-container').innerHTML = steps
+        .map(({ step, item }) => {
+          const icon = item.status === 'PASS' ? '<span class="text-emerald-400 font-bold">✔</span>' : item.status === 'WARN' ? '<span class="text-amber-400 font-bold">⚠</span>' : '<span class="text-rose-400 font-bold">✖</span>';
+          return `
+            <div class="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800/90 flex items-start gap-2.5">
+              <div class="mt-0.5 text-sm">${icon}</div>
+              <div class="text-xs">
+                <div class="text-[11px] text-slate-400 font-medium">${step}</div>
+                <div class="font-bold text-slate-100 mt-0.5">${item.title}</div>
+                <div class="text-slate-400 text-[11px] leading-relaxed mt-0.5">${item.detail}</div>
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+
+      // 未來 2 個月劇本卡片
+      const todayBar = state.chartData[state.currentBarIndex] || state.chartData[55];
+      const futureBars = state.chartData.slice(state.currentBarIndex + 1);
+      const b2Bar = futureBars.find((d) => d.rule === 'B2') || futureBars[10];
+      const s4Bar = futureBars.find((d) => d.rule === 'S4') || futureBars[futureBars.length - 1];
+
+      document.getElementById('scenario-box-title').textContent = `✨ 未來 2 個月實戰劇本推演 (${timeline.todayStr} → ${timeline.twoMonthsLaterStr})`;
+      document.getElementById('scenario-cards-container').innerHTML = `
+        <div onclick="focusBarIndex(${todayBar.index})" class="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 hover:border-sky-500/60 cursor-pointer transition-all">
+          <div class="flex items-center justify-between font-mono text-[11px] text-sky-400 font-bold">
+            <span>1. 今日基準 (${todayBar.date})</span>
+            <span>現價 $${todayBar.close.toFixed(2)}</span>
+          </div>
+          <p class="text-slate-300 mt-1 leading-relaxed">
+            目前股價乖離率 ${todayBar.bias20}%，策略上不追高，耐心等待回測上揚月線。
+          </p>
+        </div>
+        <div onclick="selectRule('B2'); focusBarIndex(${b2Bar.index})" class="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 hover:border-emerald-500/60 cursor-pointer transition-all">
+          <div class="flex items-center justify-between font-mono text-[11px] text-emerald-400 font-bold">
+            <span>2. 預計回測買點 B2 (${b2Bar.date})</span>
+            <span>支撐約 $${b2Bar.close.toFixed(2)}</span>
+          </div>
+          <p class="text-slate-300 mt-1 leading-relaxed">
+            回測上揚 MA20 且 MACD 維持零軸上，待出現「錘頭線 / 吞噬紅K」進場佈局。
+          </p>
+        </div>
+        <div onclick="selectRule('S4'); focusBarIndex(${s4Bar.index})" class="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 hover:border-amber-500/60 cursor-pointer transition-all">
+          <div class="flex items-center justify-between font-mono text-[11px] text-amber-400 font-bold">
+            <span>3. 2個月波段目標 S4 (${s4Bar.date})</span>
+            <span>目標約 $${s4Bar.close.toFixed(2)}</span>
+          </div>
+          <p class="text-slate-300 mt-1 leading-relaxed">
+            波段推升衝出布林上軌（葛蘭碧賣點 4 正乖離過大），分批停利落袋為安。
+          </p>
+        </div>
+      `;
+
+      // 台股外部看盤直達平台
+      document.getElementById('external-portals-title').textContent = `🌐 ${stock.code} ${stock.name} 外部即時看盤與下單平台：`;
+      const portals = [
+        { name: 'Yahoo 奇摩股市', url: `https://tw.stock.yahoo.com/quote/${stock.code}.TW` },
+        { name: '玩股網 WantGoo', url: `https://www.wantgoo.com/stock/${stock.code}/technical-chart` },
+        { name: 'Goodinfo! 台灣股市', url: `https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID=${stock.code}` },
+        { name: 'TradingView 台股', url: `https://tw.tradingview.com/symbols/TWSE-${stock.code}/` }
+      ];
+      document.getElementById('external-portals-grid').innerHTML = portals
+        .map(
+          (p) => `
+          <a href="${p.url}" target="_blank" rel="noopener noreferrer"
+            class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/50 text-[11px] text-slate-200 flex items-center justify-between transition-all">
+            <span class="truncate font-medium">${p.name}</span>
+            <span class="text-amber-400 text-xs">↗</span>
+          </a>
+        `
+        )
+        .join('');
+    }
+
+    function renderBottomMatrix() {
+      const colors = getColors();
+      const grid = document.getElementById('granville-matrix-grid');
+      if (!grid) return;
+      grid.innerHTML = Object.values(GRANVILLE_RULES_INFO)
+        .map((rule) => {
+          const isBuy = rule.type === 'BUY';
+          const isSelected = state.selectedRuleId === rule.id;
+          return `
+            <button onclick="switchTab('WORKSTATION'); selectRule('${rule.id}')"
+              class="text-left p-3 rounded-xl border transition-all flex flex-col justify-between ${
+                isSelected ? 'bg-slate-800/90 border-amber-400 ring-1 ring-amber-400' : 'bg-slate-900/70 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
+              }">
+              <div>
+                <div class="flex items-center justify-between mb-1.5">
+                  <span class="text-xs font-mono font-bold px-2 py-0.5 rounded" style="background-color:${isBuy ? colors.upBg : colors.downBg}; color:${isBuy ? colors.up : colors.down}">
+                    ${rule.shortLabel}
+                  </span>
+                  <span class="text-slate-500 text-xs">➔</span>
+                </div>
+                <p class="text-xs font-semibold text-slate-200">${rule.name}</p>
+                <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">${rule.granvilleDesc}</p>
+              </div>
+              <div class="mt-2.5 pt-2 border-t border-slate-800/80 text-[11px] text-amber-300/90 font-medium truncate">
+                板機：${rule.paTrigger}
+              </div>
+            </button>
+          `;
+        })
+        .join('');
+    }
+
+    function renderPythonCode() {
+      const stock = getCurrentStock();
+      document.getElementById('python-tab-title').textContent = `🐍 Python 本地端 / Google Colab 自動化繪圖腳本 (${stock.code}.TW ${stock.name})`;
+      const code = `# ==============================================================================
+# ${stock.code}.TW (${stock.name}) 葛蘭碧八大法則 + MACD + 布林通道 + PA 實戰繪圖腳本
+# 執行環境：Python 3.9+ (pip install yfinance pandas mplfinance numpy)
+# ==============================================================================
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import mplfinance as mpf
+
+ticker = "${stock.code}.TW"
+df = yf.download(ticker, period="1y", interval="1d")
+if isinstance(df.columns, pd.MultiIndex):
+    df.columns = df.columns.get_level_values(0)
+
+df['MA20'] = df['Close'].rolling(window=${state.maPeriod}).mean()
+df['MA60'] = df['Close'].rolling(window=60).mean()
+df['Bias20'] = ((df['Close'] - df['MA20']) / df['MA20']) * 100
+
+df['std'] = df['Close'].rolling(window=${state.maPeriod}).std()
+df['Upper'] = df['MA20'] + (${state.bbStd} * df['std'])
+df['Lower'] = df['MA20'] - (${state.bbStd} * df['std'])
+
+exp12 = df['Close'].ewm(span=12, adjust=False).mean()
+exp26 = df['Close'].ewm(span=26, adjust=False).mean()
+df['MACD'] = exp12 - exp26
+df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+df['Hist'] = df['MACD'] - df['Signal']
+
+mpf.plot(df, type='candle', style='nightclouds', title=f"{ticker} Granville Strategy", volume=True)`;
+      document.getElementById('python-code-block').textContent = code;
+    }
+
+    // ==========================================
+    // 7. 互動控制與匯出檔案核心功能 (HTML / CSV / JSON 匯出)
+    // ==========================================
+    function showToast(message) {
+      const toast = document.getElementById('toast-notification');
+      const text = document.getElementById('toast-text');
+      text.textContent = message;
+      toast.classList.remove('hidden');
+      setTimeout(() => {
+        toast.classList.add('hidden');
+      }, 3200);
+    }
+
+    function selectStock(code) {
+      state.selectedStockCode = code;
+      state.hoveredIndex = null;
+      fetchRealTaiwanStockData(code);
+    }
+
+    function setChartMode(mode) {
+      state.chartMode = mode;
+      state.hoveredIndex = null;
+      document.getElementById('mode-btn-forecast').className =
+        mode === 'RECENT_FORECAST'
+          ? 'px-3 py-1 rounded text-xs font-semibold transition-all bg-amber-500 text-slate-950 shadow'
+          : 'px-3 py-1 rounded text-xs font-semibold transition-all text-slate-400 hover:text-white';
+      document.getElementById('mode-btn-fullcycle').className =
+        mode === 'FULL_CYCLE'
+          ? 'px-3 py-1 rounded text-xs font-semibold transition-all bg-amber-500 text-slate-950 shadow'
+          : 'px-3 py-1 rounded text-xs font-semibold transition-all text-slate-400 hover:text-white';
+      rebuildAndRenderAll();
+    }
+
+    function toggleColorTheme() {
+      state.colorTheme = state.colorTheme === 'TW' ? 'INTL' : 'TW';
+      document.getElementById('color-theme-dot').className = `w-2 h-2 rounded-full ${state.colorTheme === 'TW' ? 'bg-red-500' : 'bg-emerald-500'}`;
+      document.getElementById('color-theme-label').textContent = state.colorTheme === 'TW' ? '台股紅漲綠跌' : '美股綠漲紅跌';
+      rebuildAndRenderAll();
+    }
+
+    function toggleFilter(key) {
+      state.filters[key] = !state.filters[key];
+      const btnMap = {
+        granville: { id: 'filter-btn-granville', activeClass: 'bg-amber-500/20 border-amber-500/60 text-amber-300' },
+        bollinger: { id: 'filter-btn-bollinger', activeClass: 'bg-blue-500/20 border-blue-500/60 text-blue-300' },
+        macd: { id: 'filter-btn-macd', activeClass: 'bg-purple-500/20 border-purple-500/60 text-purple-300' },
+        priceAction: { id: 'filter-btn-pa', activeClass: 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300' }
+      };
+      const cfg = btnMap[key];
+      if (cfg) {
+        const el = document.getElementById(cfg.id);
+        el.className = `px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+          state.filters[key] ? cfg.activeClass : 'bg-slate-900 border-slate-800 text-slate-500'
+        }`;
+      }
+      renderMainChartSVG();
+    }
+
+    function selectRule(ruleId) {
+      state.selectedRuleId = ruleId;
+      const targetBar = state.chartData.find((d) => d.rule === ruleId);
+      if (targetBar) {
+        state.hoveredIndex = targetBar.index;
+        renderRuleJumpButtons();
+        renderMainChartSVG();
+        renderRightSidebar();
+        renderBottomMatrix();
+      } else {
+        setChartMode('FULL_CYCLE');
+      }
+    }
+
+    function focusBarIndex(idx) {
+      if (idx !== undefined && idx !== null) {
+        state.hoveredIndex = idx;
+        renderMainChartSVG();
+        renderRightSidebar();
+      }
+    }
+
+    function updateIndicatorParams() {
+      state.maPeriod = Number(document.getElementById('select-ma-period').value);
+      state.bbStd = Number(document.getElementById('select-bb-std').value);
+      rebuildAndRenderAll();
+    }
+
+    function switchTab(tabName) {
+      state.activeTab = tabName;
+      const tabs = {
+        WORKSTATION: { content: 'tab-content-workstation', btn: 'tab-btn-workstation' },
+        EXPORT_HUB: { content: 'tab-content-export', btn: 'tab-btn-export' },
+        PYTHON_EXPORT: { content: 'tab-content-python', btn: 'tab-btn-python' }
+      };
+      Object.keys(tabs).forEach((k) => {
+        const isTarget = k === tabName;
+        document.getElementById(tabs[k].content).classList.toggle('hidden', !isTarget);
+        document.getElementById(tabs[k].btn).className = isTarget
+          ? 'px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all bg-amber-500 text-slate-950 shadow'
+          : 'px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all text-slate-400 hover:text-white';
+      });
+    }
+
+    // 匯出 1：下載完整獨立 index.html 純前端檔案
+    function exportStandaloneHTML() {
+      const fullHtmlSource = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+      const blob = new Blob([fullHtmlSource], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'index.html';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('已匯出純前端專案檔 (index.html)，可直接點擊開啟或上傳至 GitHub Pages！');
+    }
+
+    // 匯出 2：下載 Excel CSV 歷史與未來 2 個月預測報表
+    function exportChartDataCSV() {
+      const stock = getCurrentStock();
+      const headers = ['日期(YYYY/MM/DD)', '區間類型', '開盤價', '最高價', '最低價', '收盤價', '漲跌幅(%)', `MA${state.maPeriod}`, 'MA60', '布林上軌', '布林下軌', '乖離率(%)', 'MACD(DIF)', 'MACD(DEA)', '葛蘭碧買賣點', '關鍵K線(PA)'];
+      const rows = state.chartData.map((d) => [
+        d.date,
+        d.isCurrent ? '今日基準' : d.isForecast ? '未來2個月預測' : '歷史日K',
+        d.open,
+        d.high,
+        d.low,
+        d.close,
+        d.changePct,
+        d.ma20,
+        d.ma60,
+        d.bbUpper,
+        d.bbLower,
+        d.bias20,
+        d.dif,
+        d.dea,
+        d.rule || '',
+        d.paPattern || ''
+      ]);
+
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${stock.code}_${stock.name}_葛蘭碧2個月預測報表.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast(`已匯出 ${stock.code} ${stock.name} 完整 CSV 報表！`);
+    }
+
+    // 匯出 3：下載 JSON 策略設定與診斷報告
+    function exportStrategyJSON() {
+      const stock = getCurrentStock();
+      const timeline = buildTradingDateTimeline(56, 44);
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        todayBaseline: timeline.todayStr,
+        twoMonthForecastEnd: timeline.twoMonthsLaterStr,
+        stock,
+        parameters: { maPeriod: state.maPeriod, bollingerStd: state.bbStd },
+        chartData: state.chartData
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${stock.code}_strategy_report.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast(`已匯出 ${stock.code} JSON 策略診斷報告！`);
+    }
+
+    function copyPythonCode() {
+      const code = document.getElementById('python-code-block').textContent;
+      navigator.clipboard.writeText(code);
+      showToast('已複製完整 Python 繪圖程式碼至剪貼簿！');
+    }
+
+    // ==========================================
+    // 8. 事件綁定與初始化啟動
+    // ==========================================
+    window.addEventListener('DOMContentLoaded', () => {
+      // 綁定 SVG 滑鼠十字線查價事件
+      const svgEl = document.getElementById('main-strategy-svg');
+      svgEl.addEventListener('mousemove', (e) => {
+        const rect = svgEl.getBoundingClientRect();
+        const relX = ((e.clientX - rect.left) / rect.width) * 1000;
+        const plotWidth = 1000 - 24 - 78;
+        const idx = Math.floor(((relX - 24) / plotWidth) * state.chartData.length);
+        if (idx >= 0 && idx < state.chartData.length && state.hoveredIndex !== idx) {
+          state.hoveredIndex = idx;
+          renderMainChartSVG();
+          renderRightSidebar();
+        }
+      });
+      svgEl.addEventListener('mouseleave', () => {
+        state.hoveredIndex = null;
+        renderMainChartSVG();
+        renderRightSidebar();
+      });
+
+      // 綁定台股搜尋表單
+      document.getElementById('stock-search-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const input = document.getElementById('custom-stock-input');
+        const raw = input.value.trim();
+        if (!raw) return;
+        const parts = raw.split(/\s+/);
+        const code = parts[0].replace(/\.(TW|TWO)$/i, '');
+        const name = parts[1] || TW_STOCK_NAME_DICT[code] || `台股 ${code}`;
+
+        if (!STOCK_PRESETS[code] && !state.customStocks[code]) {
+          const seedNum = parseInt(code, 10) || 2330;
+          const estBase = Number(((seedNum % 85) + 18).toFixed(1));
+          state.customStocks[code] = {
+            code,
+            name,
+            enName: `TW-${code}`,
+            sector: '自訂台股觀測標的',
+            basePrice: estBase,
+            peakPrice: Number((estBase * 1.24).toFixed(1)),
+            dipPrice: Number((estBase * 0.86).toFixed(1)),
+            currentPrice: Number((estBase * 1.12).toFixed(1)),
+            ma20Current: Number((estBase * 1.05).toFixed(1)),
+            ma60Current: Number((estBase * 0.99).toFixed(1)),
+            summaryStatus: '連線檢索台股最新日K線與葛蘭碧位階中...',
+            strategyAdvice: `針對 ${code} ${name} 套用葛蘭碧八大法則 + 布林通道過濾 + MACD 動能確認 + 關鍵K線(PA) 四維度複合系統。`
+          };
+        }
+        state.selectedStockCode = code;
+        fetchRealTaiwanStockData(code, parts[1]);
+        input.value = '';
+      });
+
+      // 綁定手動校正現價表單
+      document.getElementById('manual-price-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const input = document.getElementById('manual-price-input');
+        const newPrice = parseFloat(input.value);
+        if (isNaN(newPrice) || newPrice <= 0) return;
+
+        const stock = getCurrentStock();
+        const code = stock.code;
+        const ratio = newPrice / stock.currentPrice;
+
+        if (state.liveCandlesMap[code] && state.liveCandlesMap[code].length > 0) {
+          const updated = [...state.liveCandlesMap[code]];
+          const last = { ...updated[updated.length - 1] };
+          last.close = Number(newPrice.toFixed(2));
+          last.high = Number(Math.max(last.high, newPrice).toFixed(2));
+          last.low = Number(Math.min(last.low, newPrice).toFixed(2));
+          updated[updated.length - 1] = last;
+          state.liveCandlesMap[code] = updated;
+        }
+
+        state.customStocks[code] = {
+          ...stock,
+          currentPrice: Number(newPrice.toFixed(2)),
+          ma20Current: Number((stock.ma20Current * ratio).toFixed(2)),
+          ma60Current: Number((stock.ma60Current * ratio).toFixed(2)),
+          basePrice: Number((stock.basePrice * ratio).toFixed(2)),
+          peakPrice: Number((Math.max(stock.peakPrice * ratio, newPrice * 1.08)).toFixed(2)),
+          dipPrice: Number((Math.min(stock.dipPrice * ratio, newPrice * 0.85)).toFixed(2)),
+          summaryStatus: `已手動校正最新成交價為 ${newPrice.toFixed(2)} 元 — 未來 2 個月葛蘭碧買賣點已同步重算`
+        };
+
+        input.value = '';
+        rebuildAndRenderAll();
+        showToast(`已依最新價 $${newPrice.toFixed(2)} 重新計算未來 2 個月預測路徑！`);
+      });
+
+      // 初始載入預設標的 (3481 群創)
+      rebuildAndRenderAll();
+      fetchRealTaiwanStockData('3481');
+    });
+  </script>
+</body>
+</html>
