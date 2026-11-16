@@ -27,15 +27,25 @@ cd tw-stock-strategy-lab
 - **歷史日 K**　近期走勢模式會嘗試從 FinMind 的 `TaiwanStockPrice` 資料集取得歷史日 K。
 - **示範資料**　FinMind 請求失敗或回傳資料不足時，圖表會使用內建模擬資料。完整多空循環模式也使用模擬資料來展示訊號。
 - **未來路徑**　圖上的未來約兩個月走勢由程式產生，用來展示可能的策略情境。
+- **手動校正**　套用「校正現價」後，圖表會把已修改的歷史基準 K 線標為手動校正資料。
 
 ## 檔案匯出
 
+在圖表下方選擇 **下載 CSV** 或 **下載 JSON**。
+
 | 格式 | 內容 |
 | --- | --- |
-| CSV | 匯出目前圖表的日期、區間、開高低收、均線、布林通道、MACD、葛蘭碧訊號與 K 線型態，可用 Excel 開啟。每列的「區間類型」用於區分圖表上的歷史、基準和未來區間。使用示範資料時，歷史區間也由程式模擬。 |
-| JSON | 包含匯出時間、情境日期、標的資訊、均線與布林通道參數，以及目前圖表的 K 線資料。 |
+| CSV | 匯出目前圖表的日期、開高低收、均線、布林通道、MACD、葛蘭碧訊號與 K 線型態，可用 Excel 開啟。「區間類型」會標示歷史日 K、手動校正、示範資料或未來情境模擬。 |
+| JSON | 包含匯出時間、情境日期、標的資訊、均線與布林通道參數，以及目前圖表的 K 線與資料來源。 |
 
-「Python 腳本」分頁可複製依目前標的和參數產生的程式。腳本使用 `yfinance` 下載日 K，計算技術指標，並以 `mplfinance` 繪製 K 線與成交量。本機執行前可用 `python -m pip install yfinance pandas mplfinance numpy` 安裝套件。
+## 外部看盤參考
+
+以下連結以台積電（2330）為例。可在各平台搜尋其他台股代號。
+
+- [Yahoo 奇摩股市](https://tw.stock.yahoo.com/quote/2330.TW)
+- [玩股網 WantGoo](https://www.wantgoo.com/stock/2330/technical-chart)
+- [Goodinfo! 台灣股市](https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID=2330)
+- [TradingView 台股](https://tw.tradingview.com/symbols/TWSE-2330/)
 
 ## 部署到 GitHub Pages
 
