@@ -4,8 +4,8 @@
 
 ## 如何開啟工作站
 
+- **線上開啟**　[前往台股策略實驗室](https://iankingh.github.io/tw-stock-strategy-lab/)。
 - **本機開啟**　從 GitHub 的 **Code → Download ZIP** 下載並解壓縮，用瀏覽器開啟裡面的 `index.html`。[下載專案 ZIP](https://github.com/iankingh/tw-stock-strategy-lab/archive/refs/heads/main.zip)
-- **線上開啟**　完成 [GitHub Pages 部署](#部署到-github-pages)後，可直接開啟 [台股策略實驗室](https://iankingh.github.io/tw-stock-strategy-lab/)。
 
 也可以用 Git 下載原始碼，然後用瀏覽器開啟 [`index.html`](index.html)。
 
@@ -32,7 +32,6 @@ cd tw-stock-strategy-lab
 
 | 格式 | 內容 |
 | --- | --- |
-| HTML | 下載工作站網頁 `index.html`，可直接用瀏覽器開啟。 |
 | CSV | 匯出目前圖表的日期、區間、開高低收、均線、布林通道、MACD、葛蘭碧訊號與 K 線型態，可用 Excel 開啟。每列的「區間類型」用於區分圖表上的歷史、基準和未來區間。使用示範資料時，歷史區間也由程式模擬。 |
 | JSON | 包含匯出時間、情境日期、標的資訊、均線與布林通道參數，以及目前圖表的 K 線資料。 |
 

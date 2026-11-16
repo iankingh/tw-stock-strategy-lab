@@ -39,7 +39,7 @@
 </head>
 <body class="min-h-screen bg-[#0b0e14] text-slate-100 selection:bg-amber-500/30">
 
-  <!-- 頂部導覽與真實股價搜尋 + 一鍵匯出列 -->
+  <!-- 頂部導覽與股價搜尋 -->
   <header class="sticky top-0 z-30 border-b border-slate-800/80 bg-[#0f131c]/95 backdrop-blur-md px-4 lg:px-6 py-3">
     <div class="max-w-[1440px] mx-auto flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
       <!-- 品牌標題與即時連線狀態徽章 -->
@@ -78,7 +78,7 @@
         </div>
       </div>
 
-      <!-- 標的快速切換、最新股價搜尋、色彩切換與一鍵匯出按鈕 -->
+      <!-- 標的快速切換、最新股價搜尋與色彩切換 -->
       <div class="flex flex-wrap items-center gap-2">
         <!-- 預設熱門台股按鈕群 -->
         <div id="preset-buttons-container" class="flex flex-wrap items-center bg-slate-900/90 p-1 rounded-lg border border-slate-800 gap-1"></div>
@@ -109,15 +109,6 @@
         >
           <span id="color-theme-dot" class="w-2 h-2 rounded-full bg-red-500"></span>
           <span id="color-theme-label">台股紅漲綠跌</span>
-        </button>
-
-        <!-- 一鍵匯出下載純前端 HTML 按鈕 -->
-        <button
-          onclick="exportStandaloneHTML()"
-          class="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-500/20 transition-all"
-          title="將此完整純前端網頁下載為獨立 index.html 檔案"
-        >
-          ⬇ 匯出純前端 HTML
         </button>
       </div>
     </div>
@@ -373,23 +364,7 @@
     <section id="tab-content-export" class="hidden bg-[#131722] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
       <h2 class="text-xl font-bold text-white border-b border-slate-800 pb-4">檔案匯出</h2>
 
-      <!-- 三種匯出格式卡片 -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div class="bg-[#181d2a] border border-emerald-500/40 rounded-xl p-5 flex flex-col justify-between">
-          <div>
-            <h3 class="text-base font-bold text-white mb-2">工作站網頁（HTML）</h3>
-            <p class="text-xs text-slate-300 leading-relaxed mb-4">
-              下載可用瀏覽器開啟的單檔網頁。
-            </p>
-          </div>
-          <button
-            onclick="exportStandaloneHTML()"
-            class="w-full py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all shadow-lg shadow-emerald-500/20"
-          >
-            ⬇ 下載 index.html
-          </button>
-        </div>
-
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="bg-[#181d2a] border border-amber-500/40 rounded-xl p-5 flex flex-col justify-between">
           <div>
             <h3 class="text-base font-bold text-white mb-2">圖表資料（CSV）</h3>
@@ -1761,7 +1736,7 @@ mpf.plot(df, type='candle', style='nightclouds', title=f"{ticker} Granville Stra
     }
 
     // ==========================================
-    // 7. 互動控制與匯出檔案核心功能 (HTML / CSV / JSON 匯出)
+    // 7. 互動控制與檔案匯出
     // ==========================================
     function showToast(message) {
       const toast = document.getElementById('toast-notification');
@@ -1862,22 +1837,7 @@ mpf.plot(df, type='candle', style='nightclouds', title=f"{ticker} Granville Stra
       });
     }
 
-    // 匯出 1：下載完整獨立 index.html 純前端檔案
-    function exportStandaloneHTML() {
-      const fullHtmlSource = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
-      const blob = new Blob([fullHtmlSource], { type: 'text/html;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'index.html';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      showToast('已下載 index.html，可用瀏覽器開啟。');
-    }
-
-    // 匯出 2：下載 Excel CSV 歷史與未來 2 個月預測報表
+    // 下載 CSV 圖表資料
     function exportChartDataCSV() {
       const stock = getCurrentStock();
       const headers = ['日期(YYYY/MM/DD)', '區間類型', '開盤價', '最高價', '最低價', '收盤價', '漲跌幅(%)', `MA${state.maPeriod}`, 'MA60', '布林上軌', '布林下軌', '乖離率(%)', 'MACD(DIF)', 'MACD(DEA)', '葛蘭碧買賣點', '關鍵K線(PA)'];
@@ -1913,7 +1873,7 @@ mpf.plot(df, type='candle', style='nightclouds', title=f"{ticker} Granville Stra
       showToast(`已匯出 ${stock.code} ${stock.name} 完整 CSV 報表！`);
     }
 
-    // 匯出 3：下載 JSON 策略設定與診斷報告
+    // 下載 JSON 策略資料
     function exportStrategyJSON() {
       const stock = getCurrentStock();
       const timeline = buildTradingDateTimeline(56, 44);
