@@ -351,6 +351,7 @@
   <!-- ============================================================================ -->
   <!-- 純前端核心 JavaScript 引擎 (零外部框架依賴，原生支援所有計算、繪圖與檔案匯出) -->
   <!-- ============================================================================ -->
+  <script src="forecast-model.js"></script>
   <script>
     // ==========================================
     // 1. 動態日期工具：永遠以「今天 (new Date())」為基準，往後預測 2 個月 (44 個交易日)
@@ -696,53 +697,29 @@
       }));
 
       const lastBar = historyBars[historyBars.length - 1];
-      const recentSlice = historyBars.slice(-maPeriod);
-      const currentMA20 = recentSlice.reduce((s, b) => s + b.close, 0) / recentSlice.length;
-      const currentBias = ((lastBar.close - currentMA20) / currentMA20) * 100;
-
       const forecastBars = [];
-      const pullbackTarget = currentBias > 2.2 ? currentMA20 * 1.012 : lastBar.close * 0.975;
-      const midBounceTarget = Math.max(lastBar.close * 1.045, currentMA20 * 1.08);
-      const midDipTarget = Math.max(pullbackTarget * 1.025, currentMA20 * 1.03);
-      const twoMonthPeakTarget = Math.max(lastBar.close * 1.12, currentMA20 * 1.16);
+      const forecastCloses = window.stockForecastModel.forecastClosePath(
+        historyBars.map((bar) => bar.close), forecastCount, maPeriod
+      );
 
       for (let f = 1; f <= forecastCount; f++) {
         const dateStr = timeline.futureDates[f - 1];
-        let targetClose;
         let rule = null;
         let paPattern = null;
 
-        if (f <= 11) {
-          const t = f / 11;
-          targetClose = lastBar.close + (pullbackTarget - lastBar.close) * Math.sin((t * Math.PI) / 2);
-          if (f === 11) {
-            rule = 'B2';
-            paPattern = '預測買點B2：回測MA20 + 錘頭線止跌確認';
-          }
-        } else if (f <= 24) {
-          const t = (f - 11) / 13;
-          targetClose = pullbackTarget + (midBounceTarget - pullbackTarget) * ((1 - Math.cos(t * Math.PI)) / 2);
-        } else if (f <= 31) {
-          const t = (f - 24) / 7;
-          targetClose = midBounceTarget + (midDipTarget - midBounceTarget) * Math.sin((t * Math.PI) / 2);
-          if (f === 31) {
-            rule = 'B3';
-            paPattern = '預測買點B3：回測支撐洗盤後吞噬紅K';
-          }
-        } else if (f <= 41) {
-          const t = (f - 31) / 10;
-          targetClose = midDipTarget + (twoMonthPeakTarget - midDipTarget) * ((1 - Math.cos(t * Math.PI)) / 2);
-          if (f === 41) {
-            rule = 'S4';
-            paPattern = '預測賣點S4：2個月波段目標 (正乖離過大獲利點)';
-          }
-        } else {
-          const t = (f - 41) / 3;
-          targetClose = twoMonthPeakTarget * (1 - 0.015 * t);
+        if (f === 11) {
+          rule = 'B2';
+          paPattern = '預測買點B2：回測MA20 + 錘頭線止跌確認';
+        } else if (f === 31) {
+          rule = 'B3';
+          paPattern = '預測買點B3：回測支撐洗盤後吞噬紅K';
+        } else if (f === 41) {
+          rule = 'S4';
+          paPattern = '預測賣點S4：2個月波段目標 (正乖離過大獲利點)';
         }
 
         const prevClose = f === 1 ? lastBar.close : forecastBars[f - 2].close;
-        const close = Number(targetClose.toFixed(2));
+        const close = forecastCloses[f - 1];
         const span = close * 0.014;
         let open = Number(((prevClose + close) / 2 + (f % 2 === 0 ? -span * 0.28 : span * 0.28)).toFixed(2));
         let high = Number((Math.max(open, close) + span * 0.75).toFixed(2));

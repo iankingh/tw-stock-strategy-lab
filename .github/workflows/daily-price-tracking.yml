@@ -1,0 +1,68 @@
+name: 台股每日股價紀錄
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+      timezone: Asia/Taipei
+    - cron: '0 17 * * *'
+      timezone: Asia/Taipei
+    - cron: '45 17 * * *'
+      timezone: Asia/Taipei
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'verify 檢查資料，forecast 記錄預測，close 記錄收盤，retry 補抓收盤'
+        type: choice
+        default: verify
+        options: [verify, forecast, close, retry]
+      trade_date:
+        description: '交易日期 YYYY-MM-DD，可留空'
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-price-tracking
+  cancel-in-progress: false
+
+jobs:
+  record:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: 取得並記錄價格
+        env:
+          ACTION_SCHEDULE: ${{ github.event.schedule }}
+          INPUT_MODE: ${{ inputs.mode }}
+          TRADE_DATE: ${{ inputs.trade_date }}
+        run: |
+          case "$ACTION_SCHEDULE" in
+            '0 6 * * *') mode=forecast ;;
+            '0 17 * * *') mode=close ;;
+            '45 17 * * *') mode=retry ;;
+            '') mode="$INPUT_MODE" ;;
+            *) echo "Unrecognized schedule: $ACTION_SCHEDULE"; exit 1 ;;
+          esac
+          node scripts/daily-price-tracking.mjs "$mode" "$TRADE_DATE"
+      - name: 儲存更新的每月 CSV
+        if: github.event_name != 'workflow_dispatch' || inputs.mode != 'verify'
+        run: |
+          if [ ! -d data/daily-price-tracking ]; then exit 0; fi
+          git add -- data/daily-price-tracking
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'data: 更新每日股價紀錄'
+          if ! git push origin HEAD:main; then
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi

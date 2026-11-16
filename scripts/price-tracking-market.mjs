@@ -1,0 +1,132 @@
+const calendarCache = new Map();
+const monthlyQuotes = new Map();
+const calendarUrl = 'https://www.twse.com.tw/rwd/zh/holidaySchedule/holidaySchedule';
+
+// TWSE published calendars, used when the endpoint returns a different year or is unavailable.
+const publishedClosures = {
+  '2026': [
+    '01-01', '02-12', '02-13', '02-15', '02-16', '02-17', '02-18', '02-19', '02-20', '02-27', '02-28',
+    '04-03', '04-04', '04-05', '04-06', '05-01', '06-19', '09-25', '09-28', '10-09', '10-10', '10-25',
+    '10-26', '12-25'
+  ],
+  '2027': [
+    '01-01', '02-02', '02-03', '02-04', '02-05', '02-06', '02-07', '02-08', '02-09', '02-10', '02-28',
+    '03-01', '04-04', '04-05', '04-06', '04-30', '05-01', '06-09', '09-15', '09-28', '10-10', '10-11',
+    '10-25', '12-24', '12-25', '12-31'
+  ]
+};
+
+async function getJSON(url, params = {}) {
+  const endpoint = new URL(url);
+  endpoint.search = new URLSearchParams(params);
+  const response = await fetch(endpoint, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(20_000)
+  });
+  if (!response.ok) throw new Error(`${endpoint.hostname} HTTP ${response.status}`);
+  return response.json();
+}
+
+export function shiftDate(date, days) {
+  const shifted = new Date(`${date}T00:00:00Z`);
+  shifted.setUTCDate(shifted.getUTCDate() + days);
+  return shifted.toISOString().slice(0, 10);
+}
+
+function rocToISO(date) {
+  const parts = String(date).trim().replaceAll('/', '').match(/^(\d{2,3})(\d{2})(\d{2})$/);
+  return parts ? `${Number(parts[1]) + 1911}-${parts[2]}-${parts[3]}` : null;
+}
+
+function price(value) {
+  const number = Number(String(value).replaceAll(',', '').trim());
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+async function loadCalendar(year) {
+  const data = await getJSON(calendarUrl, {
+    date: `${year}0101`, response: 'json'
+  });
+  if (!Array.isArray(data.data) || !data.data.length || data.date !== `${year}0101`) {
+    throw new Error(`TWSE did not provide the ${year} trading calendar`);
+  }
+  const overrides = new Map();
+  for (const [date, name] of data.data) {
+    if (!date.startsWith(`${year}-`) || !name) continue;
+    const isTradingDay = /(?:開始|最後|恢復|照常|補行)交易|開市/.test(name);
+    overrides.set(date, isTradingDay);
+  }
+  if (!overrides.size) throw new Error(`TWSE ${year} calendar has no valid dates`);
+  return overrides;
+}
+
+export async function isTradingDate(date) {
+  const year = date.slice(0, 4);
+  if (!calendarCache.has(year)) {
+    calendarCache.set(year, loadCalendar(year).catch((error) => {
+      const fallback = publishedClosures[year];
+      if (!fallback) throw error;
+      console.warn(`${error.message}; using the published ${year} TWSE calendar copy`);
+      return new Map(fallback.map((day) => [`${year}-${day}`, false]));
+    }));
+  }
+  const overrides = await calendarCache.get(year);
+  if (overrides.has(date)) return overrides.get(date);
+  const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+  return weekday !== 0 && weekday !== 6;
+}
+
+export async function previousTradingDate(date) {
+  let previous = shiftDate(date, -1);
+  while (!await isTradingDate(previous)) previous = shiftDate(previous, -1);
+  return previous;
+}
+
+export async function finMindPrices(stock, startDate, endDate) {
+  const data = await getJSON('https://api.finmindtrade.com/api/v4/data', {
+    dataset: 'TaiwanStockPrice', data_id: stock, start_date: startDate, end_date: endDate
+  });
+  if (data.msg !== 'success' || !Array.isArray(data.data)) throw new Error(`FinMind returned no valid dataset for ${stock}`);
+  const quotes = new Map();
+  for (const row of data.data) {
+    const close = price(row.close);
+    if (String(row.stock_id) === stock && row.date >= startDate && row.date <= endDate && close !== null) {
+      quotes.set(row.date, close);
+    }
+  }
+  return quotes;
+}
+
+export async function latestTWSEPrices(date) {
+  const data = await getJSON('https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL');
+  if (!Array.isArray(data)) throw new Error('TWSE OpenAPI did not return a list of stock quotes');
+  const quotes = new Map();
+  for (const row of data) {
+    const close = price(row.ClosingPrice);
+    if (rocToISO(row.Date) === date && close !== null) quotes.set(String(row.Code), close);
+  }
+  return quotes;
+}
+
+async function loadTWSEMonth(stock, date) {
+  const data = await getJSON('https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY', {
+    date: date.replaceAll('-', ''), stockNo: stock, response: 'json'
+  });
+  if (data.stat !== 'OK' || !Array.isArray(data.data)) throw new Error(`TWSE did not publish the requested month for ${stock}`);
+  const dateIndex = data.fields.indexOf('日期');
+  const closeIndex = data.fields.indexOf('收盤價');
+  if (dateIndex < 0 || closeIndex < 0) throw new Error('TWSE date or close field is missing');
+  const quotes = new Map();
+  for (const row of data.data) {
+    const tradeDate = rocToISO(row[dateIndex]);
+    const close = price(row[closeIndex]);
+    if (tradeDate && close !== null) quotes.set(tradeDate, close);
+  }
+  return quotes;
+}
+
+export async function historicalTWSEClose(stock, date) {
+  const key = `${stock}:${date.slice(0, 7)}`;
+  if (!monthlyQuotes.has(key)) monthlyQuotes.set(key, loadTWSEMonth(stock, date));
+  return (await monthlyQuotes.get(key)).get(date);
+}

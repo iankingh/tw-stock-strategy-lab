@@ -14,7 +14,7 @@ git clone https://github.com/iankingh/tw-stock-strategy-lab.git
 cd tw-stock-strategy-lab
 ```
 
-介面、圖表和指標計算集中在同一個 HTML 檔，使用原生 JavaScript、SVG 和 Tailwind CSS CDN，開啟前無需安裝 Node.js 或執行建置。Tailwind CSS、Google Fonts 和 FinMind 日 K 資料會透過網路載入。
+工作站使用原生 JavaScript、SVG 和 Tailwind CSS CDN。保留 `index.html` 和同目錄的 `forecast-model.js`，用瀏覽器開啟前無需安裝 Node.js 或執行建置。Tailwind CSS、Google Fonts 和 FinMind 日 K 資料會透過網路載入。
 
 ## 操作方式
 
@@ -37,6 +37,22 @@ cd tw-stock-strategy-lab
 | --- | --- |
 | CSV | 匯出目前圖表的日期、開高低收、均線、布林通道、MACD、葛蘭碧訊號與 K 線型態，可用 Excel 開啟。「區間類型」會標示歷史日 K、手動校正、示範資料或未來情境模擬。 |
 | JSON | 包含匯出時間、情境日期、標的資訊、均線與布林通道參數，以及目前圖表的 K 線與資料來源。 |
+
+## 每日預測與收盤紀錄
+
+GitHub Actions 以台灣時間執行，追蹤 2312、2317、2330、2603、3231、3481 六檔上市股票。每月一份 CSV 存在 [`data/daily-price-tracking/`](https://github.com/iankingh/tw-stock-strategy-lab/tree/main/data/daily-price-tracking)，檔名以交易日的年月組成，例如 `2026-11.csv`。
+
+| 時間 | 記錄工作 |
+| --- | --- |
+| 06:00 | 以截至前一交易日的 FinMind 日 K 和工作站的 20 日均線情境模型，計算當天預測收盤價。記錄基準日期、前次收盤價和策略版本。 |
+| 17:00 | 查詢證交所當天的實際收盤價，依交易日期和股票代號補上同一列。 |
+| 17:45 | 重查未取得的收盤價，並處理前七天已有紀錄的缺值。證交所尚未提供時，以日期吻合的 FinMind 日 K 補抓。 |
+
+排程依證交所日曆判斷休市。CSV 使用台灣時區的實際記錄時間。若盤前工作延遲到 09:00 之後，或歷史資料未更新至前一交易日，預測欄會留空。資料延遲時收盤價欄會留空，補抓時會寫回原交易月份。
+
+在 GitHub Actions 的「台股每日股價紀錄」可選 **Run workflow**。`verify` 用已收盤的交易日檢查資料來源和預測計算，`retry` 可指定交易日補抓收盤價。
+
+[證交所交易日曆](https://www.twse.com.tw/zh/trading/holiday.html) · [證交所日成交資訊](https://www.twse.com.tw/zh/trading/historical/stock-day.html) · [FinMind 日成交資訊](https://finmind.github.io/tutor/TaiwanMarket/Technical/) · [GitHub Actions 排程說明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
 
 ## 外部看盤參考
 
