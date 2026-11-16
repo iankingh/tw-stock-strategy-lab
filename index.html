@@ -70,7 +70,7 @@
             📊 互動策略看盤室
           </button>
           <button id="tab-btn-export" onclick="switchTab('EXPORT_HUB')" class="px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all text-slate-400 hover:text-white">
-            📦 匯出專案 & GitHub 部署
+            📦 檔案匯出
           </button>
           <button id="tab-btn-python" onclick="switchTab('PYTHON_EXPORT')" class="px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all text-slate-400 hover:text-white">
             🐍 Python 腳本
@@ -368,92 +368,56 @@
     </div>
 
     <!-- ========================================== -->
-    <!-- 分頁 2：純前端專案匯出中心 & GitHub 免編譯部署教學 -->
+    <!-- 分頁 2：檔案匯出 -->
     <!-- ========================================== -->
     <section id="tab-content-export" class="hidden bg-[#131722] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
-      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-800 pb-4">
-        <div>
-          <span class="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
-            100% 純前端 Zero-Build 架構 (HTML5 + Tailwind + Vanilla JS)
-          </span>
-          <h2 class="text-xl font-bold text-white mt-2">
-            📦 一鍵匯出純前端專案檔案 & GitHub Pages 30 秒免編譯部署
-          </h2>
-          <p class="text-xs text-slate-400 mt-1">
-            目前已轉換為純前端單檔架構，完全不需要安裝 Node.js 或執行 <code class="text-amber-300">npm run build</code>，下載 <code class="text-emerald-300">index.html</code> 後滑鼠連點兩下即可在瀏覽器離線/連線開啟！
-          </p>
-        </div>
-      </div>
+      <h2 class="text-xl font-bold text-white border-b border-slate-800 pb-4">檔案匯出</h2>
 
       <!-- 三種匯出格式卡片 -->
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="bg-[#181d2a] border border-emerald-500/40 rounded-xl p-5 flex flex-col justify-between">
           <div>
-            <div class="text-xs font-bold text-emerald-400 mb-1">匯出項目 1（最推薦）</div>
-            <h3 class="text-base font-bold text-white mb-2">完整純前端網頁專案 (index.html)</h3>
+            <h3 class="text-base font-bold text-white mb-2">工作站網頁（HTML）</h3>
             <p class="text-xs text-slate-300 leading-relaxed mb-4">
-              將整個工作站（包含葛蘭碧八大買賣點演算法、SVG 互動 K 線圖、FinMind/Yahoo 查價引擎與所有介面）打包為單一獨立 <code class="text-emerald-300">index.html</code> 檔案。
+              下載可用瀏覽器開啟的單檔網頁。
             </p>
           </div>
           <button
             onclick="exportStandaloneHTML()"
             class="w-full py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all shadow-lg shadow-emerald-500/20"
           >
-            ⬇ 下載獨立 index.html 專案檔
+            ⬇ 下載 index.html
           </button>
         </div>
 
         <div class="bg-[#181d2a] border border-amber-500/40 rounded-xl p-5 flex flex-col justify-between">
           <div>
-            <div class="text-xs font-bold text-amber-400 mb-1">匯出項目 2</div>
-            <h3 class="text-base font-bold text-white mb-2">歷史日K與未來2個月預測表 (.csv)</h3>
+            <h3 class="text-base font-bold text-white mb-2">圖表資料（CSV）</h3>
             <p class="text-xs text-slate-300 leading-relaxed mb-4">
-              匯出當前觀測標的之 100 筆交易日完整數據（含日期 <code class="text-amber-300">YYYY/MM/DD</code>、開高低收、MA20、MA60、布林軌道、MACD 與葛蘭碧買賣點標記），支援 Excel 直接開啟。
+              匯出目前圖表的日 K、技術指標與訊號標記，可用 Excel 開啟。
             </p>
           </div>
           <button
             onclick="exportChartDataCSV()"
             class="w-full py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-all shadow-lg shadow-amber-500/20"
           >
-            ⬇ 下載 Excel CSV 股價預測表
+            ⬇ 下載 CSV
           </button>
         </div>
 
         <div class="bg-[#181d2a] border border-sky-500/40 rounded-xl p-5 flex flex-col justify-between">
           <div>
-            <div class="text-xs font-bold text-sky-400 mb-1">匯出項目 3</div>
-            <h3 class="text-base font-bold text-white mb-2">策略參數與四維度診斷報告 (.json)</h3>
+            <h3 class="text-base font-bold text-white mb-2">策略資料（JSON）</h3>
             <p class="text-xs text-slate-300 leading-relaxed mb-4">
-              匯出當前標的之四維度共振評分、回測買點 B2 目標價、2 個月波段目標價 S4 與完整 K 線 JSON 結構，方便串接其他量化系統。
+              匯出標的資訊、目前的指標設定與 K 線資料。
             </p>
           </div>
           <button
             onclick="exportStrategyJSON()"
             class="w-full py-2.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs transition-all shadow-lg shadow-sky-500/20"
           >
-            ⬇ 下載 JSON 策略診斷報告
+            ⬇ 下載 JSON
           </button>
-        </div>
-      </div>
-
-      <!-- 純前端直接上傳 GitHub Pages 3 步驟說明 -->
-      <div class="bg-[#0d1017] border border-slate-800 rounded-xl p-5 space-y-3">
-        <h3 class="text-sm font-bold text-amber-400">
-          🚀 如何把下載的 index.html 直接免費部署到 GitHub Pages？（完全不用寫指令）
-        </h3>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-300">
-          <div class="p-3.5 rounded-lg bg-slate-900/90 border border-slate-800">
-            <div class="font-bold text-white mb-1">步驟 1：下載 index.html</div>
-            點擊上方綠色按鈕「下載獨立 index.html 專案檔」，您的電腦會取得名為 <code class="text-emerald-300">index.html</code> 的純前端檔案。
-          </div>
-          <div class="p-3.5 rounded-lg bg-slate-900/90 border border-slate-800">
-            <div class="font-bold text-white mb-1">步驟 2：上傳至 GitHub 倉庫</div>
-            在 GitHub 建立一個公開 Repository（例如 <code class="text-amber-300">tw-stock-strategy</code>），點擊 <strong>Add file → Upload files</strong>，把 <code class="text-emerald-300">index.html</code> 拖曳進去並點擊 Commit。
-          </div>
-          <div class="p-3.5 rounded-lg bg-slate-900/90 border border-slate-800">
-            <div class="font-bold text-white mb-1">步驟 3：開啟 GitHub Pages</div>
-            進入該倉庫的 <strong>Settings → Pages</strong>，在 Branch 選擇 <code class="text-sky-300">main</code> 並按 Save，等待 30 秒即可獲得您的永久免費看盤網址！
-          </div>
         </div>
       </div>
     </section>
@@ -1910,7 +1874,7 @@ mpf.plot(df, type='candle', style='nightclouds', title=f"{ticker} Granville Stra
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      showToast('已匯出純前端專案檔 (index.html)，可直接點擊開啟或上傳至 GitHub Pages！');
+      showToast('已下載 index.html，可用瀏覽器開啟。');
     }
 
     // 匯出 2：下載 Excel CSV 歷史與未來 2 個月預測報表
