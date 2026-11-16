@@ -34,8 +34,6 @@ async function forecastFor(stock, previous) {
   const closes = dates.map((date) => Number(series.get(date).toFixed(2)));
   return {
     forecast_close: model.forecastClosePath(closes, 1)[0].toFixed(2),
-    history_through: previous,
-    previous_close: closes.at(-1).toFixed(2),
     model_version: model.version
   };
 }
@@ -84,8 +82,9 @@ async function officialCloses(date, targets, preferLatest, allowFinMind) {
       console.warn(`${date} ${stock} close not available`);
       continue;
     }
+    if (source === 'FinMind') console.log(`${date} ${stock} close collected from FinMind`);
     results.push([stock, {
-      actual_close: close.toFixed(2), actual_recorded_at: taipeiClock().timestamp, actual_source: source
+      actual_close: close.toFixed(2), actual_recorded_at: taipeiClock().timestamp
     }]);
   }
   return results;

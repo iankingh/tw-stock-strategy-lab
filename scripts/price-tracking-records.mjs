@@ -1,11 +1,22 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-const columns = [
+const columnTitles = {
+  trade_date: '交易日',
+  stock_id: '股票代號',
+  forecast_close: '預測收盤價',
+  forecast_at: '預測時間',
+  actual_close: '實際收盤價',
+  actual_recorded_at: '收盤價取得時間',
+  model_version: '策略版本'
+};
+const columns = Object.keys(columnTitles);
+const header = Object.values(columnTitles).join(',');
+const legacyColumns = [
   'trade_date', 'stock_id', 'forecast_close', 'forecast_at', 'history_through',
   'previous_close', 'model_version', 'actual_close', 'actual_recorded_at', 'actual_source'
 ];
-const header = columns.join(',');
+const legacyHeader = legacyColumns.join(',');
 
 export class MonthlyRecords {
   constructor(directory) {
@@ -23,18 +34,21 @@ export class MonthlyRecords {
     });
     const rows = new Map();
     if (text) {
-      const [first, ...lines] = text.trimEnd().split(/\r?\n/);
-      if (first !== header) throw new Error(`Unexpected CSV header in ${filename}`);
+      const [first, ...lines] = text.replace(/^\uFEFF/, '').trimEnd().split(/\r?\n/);
+      if (first !== header && first !== legacyHeader) throw new Error(`Unexpected CSV header in ${filename}`);
+      const inputColumns = first === legacyHeader ? legacyColumns : columns;
+      const fieldPositions = columns.map((column) => inputColumns.indexOf(column));
 
       for (const line of lines) {
         const fields = line.split(',');
         const [date, stock] = fields;
         const key = `${date}:${stock}`;
-        if (fields.length !== columns.length || !date.startsWith(`${month}-`) || rows.has(key)) {
+        if (fields.length !== inputColumns.length || !date.startsWith(`${month}-`) || rows.has(key)) {
           throw new Error(`Invalid or duplicate row in ${filename}: ${key}`);
         }
-        rows.set(key, Object.fromEntries(columns.map((column, index) => [column, fields[index]])));
+        rows.set(key, Object.fromEntries(columns.map((column, index) => [column, fields[fieldPositions[index]]])));
       }
+      if (first === legacyHeader) this.changed.add(month);
     }
     this.months.set(month, rows);
     return rows;
