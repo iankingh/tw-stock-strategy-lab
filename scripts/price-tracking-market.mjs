@@ -1,20 +1,9 @@
+import tradingCalendar from '../trading-calendar.js';
+
 const calendarCache = new Map();
 const monthlyQuotes = new Map();
 const calendarUrl = 'https://www.twse.com.tw/rwd/zh/holidaySchedule/holidaySchedule';
-
-// TWSE published calendars, used when the endpoint returns a different year or is unavailable.
-const publishedClosures = {
-  '2026': [
-    '01-01', '02-12', '02-13', '02-15', '02-16', '02-17', '02-18', '02-19', '02-20', '02-27', '02-28',
-    '04-03', '04-04', '04-05', '04-06', '05-01', '06-19', '09-25', '09-28', '10-09', '10-10', '10-25',
-    '10-26', '12-25'
-  ],
-  '2027': [
-    '01-01', '02-02', '02-03', '02-04', '02-05', '02-06', '02-07', '02-08', '02-09', '02-10', '02-28',
-    '03-01', '04-04', '04-05', '04-06', '04-30', '05-01', '06-09', '09-15', '09-28', '10-10', '10-11',
-    '10-25', '12-24', '12-25', '12-31'
-  ]
-};
+export const { shiftDate } = tradingCalendar;
 
 async function getJSON(url, params = {}) {
   const endpoint = new URL(url);
@@ -25,12 +14,6 @@ async function getJSON(url, params = {}) {
   });
   if (!response.ok) throw new Error(`${endpoint.hostname} HTTP ${response.status}`);
   return response.json();
-}
-
-export function shiftDate(date, days) {
-  const shifted = new Date(`${date}T00:00:00Z`);
-  shifted.setUTCDate(shifted.getUTCDate() + days);
-  return shifted.toISOString().slice(0, 10);
 }
 
 function rocToISO(date) {
@@ -61,19 +44,15 @@ async function loadCalendar(year) {
 }
 
 export async function isTradingDate(date) {
+  const published = tradingCalendar.isTradingDate(date);
+  if (published !== null) return published;
+
   const year = date.slice(0, 4);
   if (!calendarCache.has(year)) {
-    calendarCache.set(year, loadCalendar(year).catch((error) => {
-      const fallback = publishedClosures[year];
-      if (!fallback) throw error;
-      console.warn(`${error.message}; using the published ${year} TWSE calendar copy`);
-      return new Map(fallback.map((day) => [`${year}-${day}`, false]));
-    }));
+    calendarCache.set(year, loadCalendar(year));
   }
   const overrides = await calendarCache.get(year);
-  if (overrides.has(date)) return overrides.get(date);
-  const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
-  return weekday !== 0 && weekday !== 6;
+  return overrides.get(date) ?? tradingCalendar.isWeekday(date);
 }
 
 export async function previousTradingDate(date) {

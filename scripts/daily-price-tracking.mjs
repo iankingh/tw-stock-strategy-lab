@@ -1,3 +1,4 @@
+import { appendFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import model from '../forecast-model.js';
 import { MonthlyRecords } from './price-tracking-records.mjs';
@@ -114,6 +115,38 @@ async function runForecast(records, date, started) {
   console.log(`${date}: recorded ${forecasts.length} new forecasts`);
 }
 
+async function auditForecasts(date, now) {
+  let summary;
+  let failure;
+  if (!await isTradingDate(date)) {
+    summary = '休市日，跳過檢查。';
+  } else if (date === now.date && now.hour < 9) {
+    summary = '盤前預測仍可寫入，請於台灣時間 09:00 後檢查當日紀錄。';
+    failure = summary;
+  } else {
+    const records = new MonthlyRecords(recordsDirectory);
+    const missing = [];
+    for (const stock of symbols) {
+      const row = await records.get(date, stock);
+      const [forecastDate, forecastTime] = (row?.forecast_at || '').split(' ');
+      const price = Number(row?.forecast_close);
+      if (!Number.isFinite(price) || price <= 0 || forecastDate !== date || !/^0[6-8]:[0-5]\d:[0-5]\d$/.test(forecastTime)) {
+        missing.push(stock);
+      }
+    }
+    summary = `已完成 ${symbols.length - missing.length}/${symbols.length} 檔。`;
+    if (missing.length) {
+      failure = `缺漏股票代號：${missing.join('、')}。`;
+      summary = `${summary}\n\n${failure}`;
+    }
+  }
+
+  const report = `## ${date} 盤前預測檢查\n\n${summary}\n`;
+  console.log(report);
+  if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, report);
+  if (failure) throw new Error(failure);
+}
+
 async function runClose(records, date, today, allowFinMind, pendingOnly = false) {
   const missing = [];
   for (const stock of symbols) {
@@ -129,10 +162,11 @@ async function runClose(records, date, today, allowFinMind, pendingOnly = false)
 }
 
 async function main(mode, requestedDate) {
-  if (!['forecast', 'close', 'retry', 'verify'].includes(mode)) throw new Error('Use forecast, close, retry or verify');
+  if (!['forecast', 'close', 'retry', 'verify', 'audit'].includes(mode)) throw new Error('Use forecast, close, retry, verify or audit');
   const now = taipeiClock();
   const date = requestedDate || (mode === 'verify' ? await previousTradingDate(now.date) : now.date);
   if (!validDate(date) || date > now.date) throw new Error(`Invalid trading date: ${date}`);
+  if (mode === 'audit') return auditForecasts(date, now);
   if (mode === 'forecast' && date !== now.date) {
     throw new Error('Forecasts can only be recorded on their target trading date');
   }

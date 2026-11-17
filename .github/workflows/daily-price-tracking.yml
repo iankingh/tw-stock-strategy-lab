@@ -6,6 +6,8 @@ on:
       timezone: Asia/Taipei
     - cron: '20 6,7 * * *'
       timezone: Asia/Taipei
+    - cron: '15 9 * * *'
+      timezone: Asia/Taipei
     - cron: '0 17 * * *'
       timezone: Asia/Taipei
     - cron: '45 17 * * *'
@@ -13,26 +15,27 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'verify 檢查資料，forecast 記錄預測，close 記錄收盤，retry 補抓收盤'
+        description: 'verify 驗證資料來源，audit 檢查預測缺漏，forecast 記錄預測，close 記錄收盤，retry 補抓收盤'
         type: choice
         default: verify
-        options: [verify, forecast, close, retry]
+        options: [verify, audit, forecast, close, retry]
       trade_date:
         description: '交易日期 YYYY-MM-DD，可留空'
         type: string
 
 permissions:
-  contents: write
-
-concurrency:
-  group: daily-price-tracking
-  cancel-in-progress: false
+  contents: read
 
 jobs:
   record:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event.schedule != '15 9 * * *' && inputs.mode != 'audit'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: daily-price-tracking
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v6
         with:
@@ -68,3 +71,20 @@ jobs:
             git pull --rebase origin main
             git push origin HEAD:main
           fi
+  audit:
+    name: 檢查盤前預測缺漏
+    if: github.ref == 'refs/heads/main' && (github.event.schedule == '15 9 * * *' || inputs.mode == 'audit')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: 檢查每月 CSV
+        env:
+          TRADE_DATE: ${{ inputs.trade_date }}
+        run: node scripts/daily-price-tracking.mjs audit "$TRADE_DATE"

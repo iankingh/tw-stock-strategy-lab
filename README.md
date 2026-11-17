@@ -14,7 +14,7 @@ git clone https://github.com/iankingh/tw-stock-strategy-lab.git
 cd tw-stock-strategy-lab
 ```
 
-工作站使用原生 JavaScript、SVG 和 Tailwind CSS CDN。保留 `index.html` 和同目錄的 `forecast-model.js`，用瀏覽器開啟前無需安裝 Node.js 或執行建置。Tailwind CSS、Google Fonts 和 FinMind 日 K 資料會透過網路載入。
+工作站使用原生 JavaScript、SVG 和 Tailwind CSS CDN。把 `index.html`、`forecast-model.js` 和 `trading-calendar.js` 放在同一個目錄，即可用瀏覽器開啟。Tailwind CSS、Google Fonts 和 FinMind 日 K 資料會透過網路載入。
 
 ## 操作方式
 
@@ -27,7 +27,7 @@ cd tw-stock-strategy-lab
 - **歷史日 K**　圖表最多顯示最近 56 筆，並使用更早的 FinMind 日 K 計算指標。查詢失敗時，同一檔股票已有快取就顯示該份資料與交易日期。
 - **示範資料**　點選「葛蘭碧全週期示範」可開啟內建模擬圖。查無歷史資料時，可重試、切換標的或主動開啟示範。
 - **資料不足**　均線使用完整的交易日筆數。資料不足時顯示 `—`，CSV 留空，JSON 為 `null`。開始產生未來情境前，基準日須有足夠資料計算所選均線。
-- **未來路徑**　圖上的未來約兩個月走勢由程式產生，用來展示可能的策略情境。
+- **未來路徑**　取台灣今天與最新 FinMind 交易日中較晚的一天，從下一個開市日開始產生 44 根模擬 K 線。B2、B3、S4 是模型安排在固定交易日的預設情境點。日曆涵蓋不足時，保留已取得的歷史日 K 並暫停模擬。
 - **手動校正**　套用「校正基準價」後，圖表會標出校正狀態並重算指標。重新取得該檔 FinMind 日 K 後會使用原始收盤價。
 
 ## 檔案匯出
@@ -36,8 +36,8 @@ cd tw-stock-strategy-lab
 
 | 格式 | 內容 |
 | --- | --- |
-| CSV | 匯出目前圖表的日期、開高低收、均線、布林通道、MACD、葛蘭碧訊號與 K 線型態，可用 Excel 開啟。「區間類型」會標示歷史日 K、手動校正、示範資料或未來情境模擬。 |
-| JSON | 包含匯出時間、情境日期、標的資訊、均線與布林通道參數，以及目前圖表的 K 線與資料來源。 |
+| CSV | 匯出目前圖表的日期、開高低收、均線、布林通道、MACD、葛蘭碧訊號與 K 線型態，可用 Excel 開啟。「區間類型」會標示歷史日 K、手動校正、示範資料和未來情境模擬。預設情境點也會明確標示。 |
+| JSON | 包含匯出時間、情境日期、標的資訊、均線與布林通道參數，以及目前圖表的 K 線。每根 K 線的 `sourceLabel` 與 CSV 的「區間類型」一致。 |
 
 ## 每日預測與收盤紀錄
 
@@ -49,12 +49,15 @@ GitHub Actions 以台灣時間執行，追蹤 2312、2317、2330、2603、3231�
 | --- | --- |
 | 06:00 | 以截至前一交易日的 FinMind 日 K 和工作站的 20 日均線情境模型，計算當天預測收盤價並記錄策略版本。 |
 | 06:20、07:20 | 若還有缺少的盤前預測，重新嘗試。已記錄的預測保留原值和時間。 |
+| 09:15 | 檢查六檔盤前預測是否齊全。GitHub Actions 摘要會列出完成數量與缺漏股票代號，缺漏時工作標示失敗。 |
 | 17:00 | 查詢證交所當天的實際收盤價，依交易日期和股票代號補上同一列。 |
 | 17:45 | 重查未取得的收盤價，並處理前七天已有紀錄的缺值。證交所尚未提供時，以日期吻合的 FinMind 日 K 補抓。 |
 
 排程依證交所日曆判斷休市。CSV 以 `YYYY-MM-DD HH:mm:ss` 記錄實際台灣時間。若盤前工作延遲到 09:00 之後，或歷史資料未更新至前一交易日，預測欄會留空。資料延遲時收盤價欄會留空，補抓時會寫回原交易月份。
 
-在 GitHub Actions 的「台股每日股價紀錄」可選 **Run workflow**。`verify` 用已收盤的交易日檢查資料來源和預測計算，`retry` 可指定交易日補抓收盤價。
+在 GitHub Actions 的「台股每日股價紀錄」可選 **Run workflow**。`audit` 可指定交易日，唯讀檢查已記錄的盤前預測。`verify` 用已收盤的交易日檢查資料來源和預測計算，`retry` 可指定交易日補抓收盤價。
+
+工作站和排程共用 `trading-calendar.js` 裡的證交所日曆，目前涵蓋 2026、2027 年。證交所公布新年度日曆或調整開休市日期時，在檔案中更新該年的 `open` 與 `closed` 清單，日期使用 `MM-DD`。列出的例外優先於平日及週末規則。排程遇到尚未收錄的年份時會查詢證交所 API。
 
 [證交所交易日曆](https://www.twse.com.tw/zh/trading/holiday.html) · [證交所日成交資訊](https://www.twse.com.tw/zh/trading/historical/stock-day.html) · [FinMind 日成交資訊](https://finmind.github.io/tutor/TaiwanMarket/Technical/) · [GitHub Actions 排程說明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
 

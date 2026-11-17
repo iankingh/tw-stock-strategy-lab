@@ -128,7 +128,7 @@
               <span id="stock-ma60-val" class="font-mono font-semibold text-sky-400">—</span>
             </div>
             <div>
-              <span class="text-slate-400 block">S4 模擬點位</span>
+              <span class="text-slate-400 block">S4 預設情境點</span>
               <span id="stock-target-val" class="font-mono font-semibold text-emerald-400">—</span>
             </div>
           </div>
@@ -340,11 +340,14 @@
   <!-- 純前端核心 JavaScript 引擎 (零外部框架依賴，原生支援所有計算、繪圖與檔案匯出) -->
   <!-- ============================================================================ -->
   <script src="forecast-model.js"></script>
+  <script src="trading-calendar.js"></script>
   <script>
     // ==========================================
-    // 1. 動態日期工具：永遠以「今天 (new Date())」為基準，往後預測 2 個月 (44 個交易日)
+    // 1. 台灣日期與證交所交易日曆
     // ==========================================
     const WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
+    const FORECAST_SESSIONS = 44;
+    const CALENDAR_UNAVAILABLE = '證交所日曆涵蓋的交易日不足，暫停產生模擬。';
 
     function formatToSlashDate(dateInput) {
       if (!dateInput) {
@@ -376,35 +379,29 @@
       return `${normalized} (週${WEEKDAY_NAMES[dt.getUTCDay()]})`;
     }
 
-    function buildTradingDateTimeline(historyCount = 56, forecastCount = 44) {
-      const taipeiDate = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
-      const today = new Date(`${taipeiDate}T00:00:00`);
-      while (today.getDay() === 0 || today.getDay() === 6) {
-        today.setDate(today.getDate() - 1);
-      }
+    function todayInTaipei() {
+      return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+    }
 
-      const pastDates = [formatToSlashDate(today)];
-      const cursorBack = new Date(today);
-      while (pastDates.length < historyCount) {
-        cursorBack.setDate(cursorBack.getDate() - 1);
-        if (cursorBack.getDay() !== 0 && cursorBack.getDay() !== 6) {
-          pastDates.unshift(formatToSlashDate(cursorBack));
-        }
+    function collectTradingDates(start, count, direction) {
+      const calendar = window.twseTradingCalendar;
+      if (!calendar) return [];
+      const dates = [];
+      for (let date = start; dates.length < count; date = calendar.shiftDate(date, direction)) {
+        const isOpen = calendar.isTradingDate(date);
+        if (isOpen === null) return [];
+        if (isOpen) dates.push(date.replaceAll('-', '/'));
       }
+      return dates;
+    }
 
-      const futureDates = [];
-      const cursorFwd = new Date(today);
-      while (futureDates.length < forecastCount) {
-        cursorFwd.setDate(cursorFwd.getDate() + 1);
-        if (cursorFwd.getDay() !== 0 && cursorFwd.getDay() !== 6) {
-          futureDates.push(formatToSlashDate(cursorFwd));
-        }
-      }
-
-      return {
-        allDates: [...pastDates, ...futureDates],
-        futureDates
-      };
+    function futureTradingDates(latestDate) {
+      const calendar = window.twseTradingCalendar;
+      if (!calendar) return [];
+      const today = todayInTaipei();
+      const latest = latestDate?.replaceAll('/', '-');
+      const anchor = latest > today ? latest : today;
+      return collectTradingDates(calendar.shiftDate(anchor, 1), FORECAST_SESSIONS, 1);
     }
 
     // ==========================================
@@ -424,7 +421,7 @@
         type: 'BUY',
         name: '買點 2 (B2)：回測上揚均線不破',
         shortLabel: 'B2 回測買點',
-        granvilleDesc: '股價位於上揚均線之上，拉回修正時觸碰上揚均線獲得支撐並再度彈升，是勝率最高的主升段加碼點。',
+        granvilleDesc: '股價位於上揚均線之上，拉回時在均線附近獲得支撐，隨後再度上漲。',
         paTrigger: '切勿直接掛單接刀！等待均線處收出「長下影線錘頭線 (Hammer)」再扣板機。'
       },
       B3: {
@@ -625,8 +622,8 @@
     }
 
     function enrichCandlesWithIndicatorsAndForecast(rawCandles, maPeriod, bbStdMult, manualPrice) {
-      const forecastCount = rawCandles.length >= maPeriod ? 44 : 0;
-      const { futureDates } = buildTradingDateTimeline(1, forecastCount);
+      const futureDates = rawCandles.length >= maPeriod ? futureTradingDates(rawCandles.at(-1).date) : [];
+      const forecastCount = futureDates.length;
       const historyBars = rawCandles.map((c, idx) => ({
         index: idx,
         date: c.date,
@@ -662,13 +659,13 @@
 
         if (f === 11) {
           rule = 'B2';
-          paPattern = `模擬 B2：回測 MA${maPeriod} 並出現錘頭線`;
+          paPattern = '預設情境點 B2（回測均線示意）';
         } else if (f === 31) {
           rule = 'B3';
-          paPattern = '預測買點B3：回測支撐洗盤後吞噬紅K';
+          paPattern = '預設情境點 B3（回測支撐示意）';
         } else if (f === 41) {
           rule = 'S4';
-          paPattern = '模擬 S4：正乖離偏大';
+          paPattern = '預設情境點 S4（正乖離示意）';
         }
 
         const prevClose = f === 1 ? lastBar.close : forecastBars[f - 2].close;
@@ -700,6 +697,7 @@
           paPattern,
           divergence: null,
           source: 'forecast',
+          isPresetScenario: rule !== null,
           isCurrent: false,
           isForecast: true
         });
@@ -728,11 +726,12 @@
       const peakPrice = preset.peakPrice * scale;
       const dipPrice = preset.dipPrice * scale;
       const historyCount = 56;
-      const forecastCount = 44;
-      const totalBars = historyCount + forecastCount;
+      const totalBars = historyCount + FORECAST_SESSIONS;
       const todayIdx = historyCount - 1;
       const warmupCount = 60 - historyCount;
-      const { allDates } = buildTradingDateTimeline(historyCount + warmupCount, forecastCount);
+      const pastDates = collectTradingDates(todayInTaipei(), historyCount + warmupCount, -1).reverse();
+      if (!pastDates.length) return [];
+      const allDates = [...pastDates, ...futureTradingDates()];
       const data = [];
 
       let seed = parseInt(code, 10) || 3481;
@@ -776,7 +775,7 @@
         }
       }
 
-      for (let i = 0; i < totalBars; i++) {
+      for (let i = 0; i < allDates.length - warmupCount; i++) {
         const dateStr = allDates[warmupCount + i];
         const close = Number(rawCloses[i].toFixed(2));
         const prevClose = i > 0 ? data[i - 1].close : close * 0.995;
@@ -977,9 +976,8 @@
 
       if (isDemo) {
         badge.textContent = '示範模式';
-        source.textContent = baseCandle.isManuallyAdjusted
-          ? '全圖為示範資料，基準價已手動校正。'
-          : '全圖為示範資料，用於展示葛蘭碧全週期訊號。';
+        const demoLabel = baseCandle?.isManuallyAdjusted ? '示範資料，基準價已手動校正。' : '全圖為示範資料。';
+        source.textContent = baseCandle ? demoLabel : CALENDAR_UNAVAILABLE;
         return;
       }
 
@@ -1002,8 +1000,16 @@
       const manualLabel = baseCandle.source === 'manual' ? '，基準價已手動校正' : '';
       const forecastLabel = state.chartData.at(-1).isForecast
         ? '分隔線右側為未來情境模擬。'
-        : `目前保留歷史圖表，至少需要 ${state.maPeriod} 筆日 K 才能產生情境。`;
+        : getForecastUnavailableMessage();
       source.textContent = `${historyLabel}截至 ${lastDate}${manualLabel}。${forecastLabel}`;
+    }
+
+    function getForecastUnavailableMessage() {
+      if (state.chartMode === 'FULL_CYCLE') return CALENDAR_UNAVAILABLE;
+      const historyLength = state.liveCandlesMap[state.selectedStockCode]?.length;
+      if (!historyLength) return '載入歷史日 K 後可檢視情境。';
+      if (historyLength < state.maPeriod) return `至少需要 ${state.maPeriod} 筆日 K 才能產生情境。`;
+      return CALENDAR_UNAVAILABLE;
     }
 
     function getCandleSourceLabel(candle) {
@@ -1011,7 +1017,7 @@
         finmind: 'FinMind 歷史日 K',
         manual: '手動校正資料',
         demo: candle.isManuallyAdjusted ? '手動校正的示範資料' : '示範資料',
-        forecast: '未來情境模擬'
+        forecast: candle.isPresetScenario ? '未來情境模擬（預設情境點）' : '未來情境模擬'
       };
       const label = labels[candle.source];
       return candle.isCurrent ? `${label}（基準）` : label;
@@ -1073,7 +1079,7 @@
     function renderSummaryBanner() {
       const stock = getCurrentStock();
       const base = state.chartData[state.currentBarIndex];
-      const s4Bar = state.chartData.find((bar) => bar.isForecast && bar.rule === 'S4');
+      const s4Bar = state.chartData.find((bar) => bar.isPresetScenario && bar.rule === 'S4');
 
       document.getElementById('stock-sector-badge').textContent = stock.sector;
       document.getElementById('stock-title').textContent = `${stock.code} ${stock.name}`;
@@ -1329,7 +1335,7 @@
               <rect x="${clampedX - 66}" y="${labelY - 13}" width="132" height="26" rx="6" fill="#0f172a"
                 stroke="${isFocused ? '#fbbf24' : badgeColor}" stroke-width="${isFocused ? '2' : '1.3'}" />
               <text x="${clampedX}" y="${labelY + 4}" fill="${isFocused ? '#fde68a' : '#f8fafc'}" font-size="10.5" font-weight="bold" text-anchor="middle">
-                ${d.isForecast ? `預測${d.rule}` : rInfo.shortLabel} @${d.close.toFixed(1)}
+                ${d.isPresetScenario ? `預設情境點 ${d.rule}` : rInfo.shortLabel} @${d.close.toFixed(1)}
               </text>
             </g>
           `);
@@ -1441,7 +1447,7 @@
 
       const isBullCandle = c.close >= c.open;
       const paStatus = c.paPattern
-        ? { status: c.rule?.startsWith('B') || c.autoPA?.bias === 'BULL' ? 'PASS' : 'WARN', title: `關鍵K線訊號：${c.paPattern}`, detail: '依圖中資料標記的 K 線型態。' }
+        ? { status: c.rule?.startsWith('B') || c.autoPA?.bias === 'BULL' ? 'PASS' : 'WARN', title: c.isPresetScenario ? c.paPattern : `關鍵K線訊號：${c.paPattern}`, detail: c.isPresetScenario ? '情境模型在固定交易日安排的點位。' : '依圖中資料標記的 K 線型態。' }
         : { status: isBullCandle ? 'PASS' : 'WARN', title: isBullCandle ? '一般紅 K 棒' : '一般綠 K 棒', detail: '此根 K 線沒有標記特定型態。' };
 
       let score = 50;
@@ -1493,17 +1499,15 @@
       const title = document.getElementById('scenario-box-title');
       title.textContent = '未來情境模擬';
       if (!base || !future.length) {
-        container.textContent = base
-          ? `至少需要 ${state.maPeriod} 筆日 K 才能產生情境。`
-          : '載入歷史日 K 後可檢視情境。';
+        container.textContent = getForecastUnavailableMessage();
         return;
       }
 
       title.textContent = `未來情境模擬（${future[0].date} ～ ${future.at(-1).date}）`;
-      const b2 = future.find((bar) => bar.rule === 'B2');
-      const s4 = future.find((bar) => bar.rule === 'S4');
-      const points = [[base, '基準日'], [b2, '模擬買點 B2'], [s4, '模擬賣點 S4']];
-      container.innerHTML = points.filter(([bar]) => bar).map(([bar, label]) => {
+      const b2 = future.find((bar) => bar.isPresetScenario && bar.rule === 'B2');
+      const s4 = future.find((bar) => bar.isPresetScenario && bar.rule === 'S4');
+      container.innerHTML = [base, b2, s4].filter(Boolean).map((bar) => {
+        const label = bar.isPresetScenario ? `預設情境點 ${bar.rule}` : '基準日';
         const action = bar.isForecast
           ? `selectRule('${bar.rule}', ${bar.index})`
           : `focusBarIndex(${bar.index})`;
@@ -1710,7 +1714,7 @@
           ma60Current: base.ma60
         },
         parameters: { maPeriod: state.maPeriod, bollingerStd: state.bbStd },
-        chartData: state.chartData
+        chartData: state.chartData.map((bar) => ({ ...bar, sourceLabel: getCandleSourceLabel(bar) }))
       };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
       const url = URL.createObjectURL(blob);
