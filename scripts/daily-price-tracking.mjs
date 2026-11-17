@@ -9,7 +9,7 @@ const symbols = ['2312', '2317', '2330', '2603', '3231', '3481'];
 const recordsDirectory = fileURLToPath(new URL('../data/daily-price-tracking', import.meta.url));
 const timeZone = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
-  hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23', timeZoneName: 'longOffset'
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
 });
 
 function taipeiClock() {
@@ -17,7 +17,7 @@ function taipeiClock() {
   const date = `${parts.year}-${parts.month}-${parts.day}`;
   return {
     date, hour: Number(parts.hour),
-    timestamp: `${date}T${parts.hour}:${parts.minute}:${parts.second}${parts.timeZoneName.slice(3)}`
+    timestamp: `${date} ${parts.hour}:${parts.minute}:${parts.second}`
   };
 }
 
@@ -90,17 +90,24 @@ async function officialCloses(date, targets, preferLatest, allowFinMind) {
   return results;
 }
 
-async function runForecast(records, date) {
+async function runForecast(records, date, started) {
   const targets = [];
   for (const stock of symbols) {
     if (!(await records.get(date, stock))?.forecast_close) targets.push(stock);
   }
+  if (!targets.length) {
+    console.log(`${date}: all forecasts already recorded`);
+    return;
+  }
+  if (started.hour < 6 || started.hour >= 9) {
+    throw new Error(`${date}: ${targets.length} forecasts missing; job started at ${started.timestamp}, outside the 06:00–09:00 Taiwan pre-market window`);
+  }
   const forecasts = await collectForecasts(date, targets);
   const recorded = taipeiClock();
   if (recorded.date !== date || recorded.hour >= 9) {
-    console.warn(`${date} forecast completed after the pre-market window`);
-    return;
+    throw new Error(`${date}: forecast calculation finished after the pre-market window`);
   }
+  if (!forecasts.length) throw new Error(`${date}: no forecast could be recorded`);
   for (const [stock, values] of forecasts) {
     await records.update(date, stock, { ...values, forecast_at: recorded.timestamp });
   }
@@ -126,9 +133,8 @@ async function main(mode, requestedDate) {
   const now = taipeiClock();
   const date = requestedDate || (mode === 'verify' ? await previousTradingDate(now.date) : now.date);
   if (!validDate(date) || date > now.date) throw new Error(`Invalid trading date: ${date}`);
-  if (mode === 'forecast' && (date !== now.date || now.hour < 6 || now.hour >= 9)) {
-    console.warn('Forecasts are recorded between 06:00 and market opening on their target date');
-    return;
+  if (mode === 'forecast' && date !== now.date) {
+    throw new Error('Forecasts can only be recorded on their target trading date');
   }
   if (mode !== 'forecast' && date === now.date && now.hour < 17) {
     console.warn('Today’s closing prices are collected from 17:00 Taiwan time');
@@ -152,7 +158,7 @@ async function main(mode, requestedDate) {
 
   const records = new MonthlyRecords(recordsDirectory);
   if (mode === 'forecast') {
-    await runForecast(records, date);
+    await runForecast(records, date, now);
   } else if (mode === 'close') {
     await runClose(records, date, now.date, date < now.date);
   } else {

@@ -4,6 +4,8 @@ on:
   schedule:
     - cron: '0 6 * * *'
       timezone: Asia/Taipei
+    - cron: '20 6,7 * * *'
+      timezone: Asia/Taipei
     - cron: '0 17 * * *'
       timezone: Asia/Taipei
     - cron: '45 17 * * *'
@@ -46,7 +48,7 @@ jobs:
           TRADE_DATE: ${{ inputs.trade_date }}
         run: |
           case "$ACTION_SCHEDULE" in
-            '0 6 * * *') mode=forecast ;;
+            '0 6 * * *'|'20 6,7 * * *') mode=forecast ;;
             '0 17 * * *') mode=close ;;
             '45 17 * * *') mode=retry ;;
             '') mode="$INPUT_MODE" ;;

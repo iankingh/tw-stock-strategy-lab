@@ -18,6 +18,10 @@ const legacyColumns = [
 ];
 const legacyHeader = legacyColumns.join(',');
 
+function toDisplayTime(value) {
+  return value.replace(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})\+08:00$/, '$1 $2');
+}
+
 export class MonthlyRecords {
   constructor(directory) {
     this.directory = directory;
@@ -46,7 +50,13 @@ export class MonthlyRecords {
         if (fields.length !== inputColumns.length || !date.startsWith(`${month}-`) || rows.has(key)) {
           throw new Error(`Invalid or duplicate row in ${filename}: ${key}`);
         }
-        rows.set(key, Object.fromEntries(columns.map((column, index) => [column, fields[fieldPositions[index]]])));
+        const row = Object.fromEntries(columns.map((column, index) => [column, fields[fieldPositions[index]]]));
+        for (const column of ['forecast_at', 'actual_recorded_at']) {
+          const converted = toDisplayTime(row[column]);
+          if (converted !== row[column]) this.changed.add(month);
+          row[column] = converted;
+        }
+        rows.set(key, row);
       }
       if (first === legacyHeader) this.changed.add(month);
     }
