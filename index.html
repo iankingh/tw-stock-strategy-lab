@@ -62,7 +62,7 @@
         </div>
       </div>
 
-      <!-- 標的快速切換、最新股價搜尋與色彩切換 -->
+      <!-- 標的快速切換與最新股價搜尋 -->
       <div class="flex flex-wrap items-center gap-2">
         <!-- 預設熱門台股按鈕群 -->
         <div id="preset-buttons-container" class="flex flex-wrap items-center bg-slate-900/90 p-1 rounded-lg border border-slate-800 gap-1"></div>
@@ -84,16 +84,6 @@
             抓最新價
           </button>
         </form>
-
-        <!-- 台股紅漲綠跌 / 國際綠漲紅跌切換 -->
-        <button
-          id="color-theme-btn"
-          onclick="toggleColorTheme()"
-          class="px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs font-medium text-slate-300 flex items-center gap-1.5 transition-colors"
-        >
-          <span id="color-theme-dot" class="w-2 h-2 rounded-full bg-red-500"></span>
-          <span id="color-theme-label">台股紅漲綠跌</span>
-        </button>
       </div>
     </div>
   </header>
@@ -595,7 +585,6 @@
       customStocks: {},
       liveCandlesMap: {},
       chartMode: 'RECENT_FORECAST', // 'RECENT_FORECAST' | 'FULL_CYCLE'
-      colorTheme: 'TW', // 'TW' (紅漲綠跌) | 'INTL' (綠漲紅跌)
       filters: {
         granville: true,
         bollinger: true,
@@ -611,32 +600,18 @@
       currentBarIndex: 55
     };
 
-    function getColors() {
-      if (state.colorTheme === 'TW') {
-        return {
-          up: '#ef4444',
-          upBg: 'rgba(239, 68, 68, 0.16)',
-          upBorder: '#f87171',
-          down: '#10b981',
-          downBg: 'rgba(16, 185, 129, 0.16)',
-          downBorder: '#34d399',
-          ma20: '#f59e0b',
-          ma60: '#38bdf8',
-          bbBand: '#60a5fa'
-        };
-      }
-      return {
-        up: '#10b981',
-        upBg: 'rgba(16, 185, 129, 0.16)',
-        upBorder: '#34d399',
-        down: '#ef4444',
-        downBg: 'rgba(239, 68, 68, 0.16)',
-        downBorder: '#f87171',
-        ma20: '#f59e0b',
-        ma60: '#38bdf8',
-        bbBand: '#60a5fa'
-      };
-    }
+    // 台股慣例為紅漲綠跌。
+    const colors = {
+      up: '#ef4444',
+      upBg: 'rgba(239, 68, 68, 0.16)',
+      upBorder: '#f87171',
+      down: '#10b981',
+      downBg: 'rgba(16, 185, 129, 0.16)',
+      downBorder: '#34d399',
+      ma20: '#f59e0b',
+      ma60: '#38bdf8',
+      bbBand: '#60a5fa'
+    };
 
     function getCurrentStock() {
       return state.customStocks[state.selectedStockCode] || STOCK_PRESETS[state.selectedStockCode] || STOCK_PRESETS['3481'];
@@ -1103,7 +1078,6 @@
     function renderRuleJumpButtons() {
       const container = document.getElementById('rule-jump-buttons');
       if (!container) return;
-      const colors = getColors();
       const order = ['B1', 'B2', 'B3', 'B4', 'S4', 'S1', 'S2', 'S3'];
       container.innerHTML = order
         .map((rKey) => {
@@ -1125,7 +1099,6 @@
 
     function renderSummaryBanner() {
       const stock = getCurrentStock();
-      const colors = getColors();
       const timeline = buildTradingDateTimeline(56, 44);
       const baseCandle = state.chartData[state.currentBarIndex];
       const futureBars = state.chartData.slice(state.currentBarIndex + 1);
@@ -1154,7 +1127,6 @@
 
     function renderMainChartSVG() {
       const stock = getCurrentStock();
-      const colors = getColors();
       const chartData = state.chartData;
       const activeCandle = getActiveCandle();
       const currentBarIndex = state.currentBarIndex;
@@ -1551,7 +1523,6 @@
     }
 
     function renderBottomMatrix() {
-      const colors = getColors();
       const grid = document.getElementById('granville-matrix-grid');
       if (!grid) return;
       grid.innerHTML = Object.values(GRANVILLE_RULES_INFO)
@@ -1612,13 +1583,6 @@
         mode === 'FULL_CYCLE'
           ? 'px-3 py-1 rounded text-xs font-semibold transition-all bg-amber-500 text-slate-950 shadow'
           : 'px-3 py-1 rounded text-xs font-semibold transition-all text-slate-400 hover:text-white';
-      rebuildAndRenderAll();
-    }
-
-    function toggleColorTheme() {
-      state.colorTheme = state.colorTheme === 'TW' ? 'INTL' : 'TW';
-      document.getElementById('color-theme-dot').className = `w-2 h-2 rounded-full ${state.colorTheme === 'TW' ? 'bg-red-500' : 'bg-emerald-500'}`;
-      document.getElementById('color-theme-label').textContent = state.colorTheme === 'TW' ? '台股紅漲綠跌' : '美股綠漲紅跌';
       rebuildAndRenderAll();
     }
 
