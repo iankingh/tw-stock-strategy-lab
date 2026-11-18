@@ -2,9 +2,9 @@ name: 台股每日股價紀錄
 
 on:
   schedule:
-    - cron: '0 6 * * *'
+    - cron: '0 7 * * *'
       timezone: Asia/Taipei
-    - cron: '20 6,7 * * *'
+    - cron: '20 7 * * *'
       timezone: Asia/Taipei
     - cron: '15 9 * * *'
       timezone: Asia/Taipei
@@ -51,7 +51,7 @@ jobs:
           TRADE_DATE: ${{ inputs.trade_date }}
         run: |
           case "$ACTION_SCHEDULE" in
-            '0 6 * * *'|'20 6,7 * * *') mode=forecast ;;
+            '0 7 * * *'|'20 7 * * *') mode=forecast ;;
             '0 17 * * *') mode=close ;;
             '45 17 * * *') mode=retry ;;
             '') mode="$INPUT_MODE" ;;
