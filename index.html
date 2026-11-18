@@ -108,8 +108,9 @@
               <div id="stock-summary-status" class="text-xs font-medium text-slate-300"></div>
             </div>
             <div class="shrink-0 text-right">
-              <div id="today-price-label" class="text-xs text-slate-300">基準價</div>
+              <div id="today-price-label" class="text-xs text-slate-300">最新收盤</div>
               <div id="stock-current-price" class="font-mono text-xl font-bold text-slate-200">—</div>
+              <p id="stock-close-source" class="text-xs text-slate-400"></p>
             </div>
           </div>
           <div class="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs">
@@ -131,15 +132,19 @@
           </div>
         </div>
 
-        <details id="manual-price-details" class="text-xs text-slate-300 md:self-start">
-          <summary class="min-h-8 cursor-pointer py-1.5 font-medium text-slate-300 hover:text-white">校正基準價</summary>
-          <form id="manual-price-form" class="mt-2 flex items-center">
-            <input id="manual-price-input" aria-label="校正後基準價" type="number" min="0.01" step="0.01"
-              class="w-24 rounded-l-lg border border-slate-700 bg-slate-950 px-2 py-1.5 font-mono text-sm text-white" />
-            <button type="submit" class="rounded-r-lg border border-l-0 border-amber-500/50 bg-amber-500/15 px-2.5 py-1.5 text-sm font-semibold text-amber-300">套用</button>
-          </form>
-          <p id="stock-strategy-advice" class="mt-1 text-xs text-slate-300"></p>
-        </details>
+        <div class="flex flex-wrap items-start gap-x-3 md:flex-col md:items-end md:gap-y-1">
+          <a id="intraday-quote-link" href="https://mis.twse.com.tw/" target="_blank" rel="noopener noreferrer"
+            title="另開證交所基本市況報導網站" class="chart-button inline-flex items-center text-xs font-semibold text-amber-300">盤中行情</a>
+          <details id="manual-price-details" class="text-xs text-slate-300 md:self-start">
+            <summary class="min-h-8 cursor-pointer py-1.5 font-medium text-slate-300 hover:text-white">校正基準價</summary>
+            <form id="manual-price-form" class="mt-2 flex items-center">
+              <input id="manual-price-input" aria-label="校正後基準價" type="number" min="0.01" step="0.01"
+                class="w-24 rounded-l-lg border border-slate-700 bg-slate-950 px-2 py-1.5 font-mono text-sm text-white" />
+              <button type="submit" class="rounded-r-lg border border-l-0 border-amber-500/50 bg-amber-500/15 px-2.5 py-1.5 text-sm font-semibold text-amber-300">套用</button>
+            </form>
+            <p id="stock-strategy-advice" class="mt-1 text-xs text-slate-300"></p>
+          </details>
+        </div>
       </div>
     </section>
 
@@ -480,6 +485,7 @@
       hoveredIndex: null,
       selectedBarDate: null,
       premarket: null,
+
       chartData: [],
       currentBarIndex: 55
     };
@@ -818,9 +824,8 @@
 
       const start = new Date();
       start.setUTCDate(start.getUTCDate() - 260);
-      const params = new URLSearchParams({
-        dataset: 'TaiwanStockPrice', data_id: code, start_date: start.toISOString().slice(0, 10)
-      });
+      const startDate = start.toISOString().slice(0, 10);
+      const params = new URLSearchParams({ dataset: 'TaiwanStockPrice', data_id: code, start_date: startDate });
 
       try {
         const res = await fetch(`https://api.finmindtrade.com/api/v4/data?${params}`, {
@@ -834,8 +839,9 @@
         if (request !== state.quoteRequest) return;
 
         const candles = new Map();
+        const today = todayInTaipei();
         for (const row of payload.data) {
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(row.date) || String(row.stock_id) !== code) continue;
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(row.date) || String(row.stock_id) !== code || row.date > today) continue;
           const open = Number(row.open);
           const high = Number(row.max);
           const low = Number(row.min);
@@ -849,6 +855,9 @@
           });
         }
         if (candles.size) {
+          for (const bar of state.liveCandlesMap[code] ?? []) {
+            if (bar.date >= formatToSlashDate(startDate) && !candles.has(bar.date)) candles.set(bar.date, bar);
+          }
           state.liveCandlesMap[code] = [...candles.values()].sort((a, b) => a.date.localeCompare(b.date));
           delete state.manualPrices.RECENT_FORECAST[code];
           state.quoteStatus = 'ready';
@@ -889,6 +898,7 @@
       renderModeButtons();
       renderRuleJumpButtons();
       renderSummaryBanner();
+      document.getElementById('intraday-quote-link').hidden = state.chartMode === 'FULL_CYCLE';
       renderPremarketSummary();
       renderFilterButtons();
       renderChartDataSource();
@@ -1011,51 +1021,106 @@
       return changePct > 0 ? colors.up : changePct < 0 ? colors.down : '#e2e8f0';
     }
 
-    function readPremarketRecord(csv, date, code) {
+    function readDailyRecords(csv) {
       const [header, ...lines] = csv.replace(/^\uFEFF/, '').trimEnd().split(/\r?\n/);
       const columns = header.split(',');
       const column = (zh, en) => Math.max(columns.indexOf(zh), columns.indexOf(en));
-      const tradeDate = column('交易日', 'trade_date');
-      const ticker = column('股票代號', 'stock_id');
-      const close = column('預測收盤價', 'forecast_close');
-      const time = column('預測時間', 'forecast_at');
-      const direction = column('預測方向', 'forecast_direction');
-      if ([tradeDate, ticker, close, time].includes(-1)) throw new Error('Invalid premarket CSV');
-      const row = lines.map(line => line.split(',')).find(fields => fields[tradeDate] === date && fields[ticker] === code);
+      const fields = {
+        date: column('交易日', 'trade_date'),
+        ticker: column('股票代號', 'stock_id'),
+        forecastClose: column('預測收盤價', 'forecast_close'),
+        forecastAt: column('預測時間', 'forecast_at'),
+        direction: column('預測方向', 'forecast_direction'),
+        actualClose: column('實際收盤價', 'actual_close'),
+        previousClose: column('昨收', 'previous_close')
+      };
+      if ([fields.date, fields.ticker, fields.forecastClose, fields.forecastAt].includes(-1)) throw new Error('Invalid daily records CSV');
+      return lines.map(line => {
+        const cells = line.split(',');
+        return Object.fromEntries(Object.entries(fields).map(([key, index]) => [key, cells[index] ?? '']));
+      });
+    }
+
+    function findPremarketRecord(rows, date, code) {
+      const row = rows.find(item => item.date === date && item.ticker === code);
       if (!row) return null;
-      const price = Number(row[close]);
-      const timestamp = /^(\d{4}-\d{2}-\d{2})[ T](0[6-8]:[0-5]\d:[0-5]\d)(?:\+08:00)?$/.exec(row[time]);
+      const price = Number(row.forecastClose);
+      const timestamp = /^(\d{4}-\d{2}-\d{2})[ T](0[6-8]:[0-5]\d:[0-5]\d)(?:\+08:00)?$/.exec(row.forecastAt);
       if (!Number.isFinite(price) || price <= 0 || timestamp?.[1] !== date) return null;
-      return { price, time: timestamp[2], direction: ['漲', '跌', '平'].includes(row[direction]) ? row[direction] : '—' };
+      return { price, time: timestamp[2], direction: ['漲', '跌', '平'].includes(row.direction) ? row.direction : '—' };
+    }
+
+    function findRecordedClose(rows, today, code) {
+      let latest = null;
+      for (const row of rows) {
+        const price = Number(row.actualClose);
+        if (row.ticker !== code || !/^\d{4}-\d{2}-\d{2}$/.test(row.date) || row.date > today ||
+            !Number.isFinite(price) || price <= 0 || (latest && row.date <= latest.date)) continue;
+        const previous = Number(row.previousClose);
+        latest = { price, date: row.date, source: '每日收盤紀錄', changePct: changeFromPrevious(price, previous) };
+      }
+      return latest;
+    }
+
+    function changeFromPrevious(price, previous) {
+      return Number.isFinite(previous) && previous > 0 ? (price / previous - 1) * 100 : null;
+    }
+
+    function latestCloseForStock(today) {
+      const history = state.liveCandlesMap[state.selectedStockCode] ?? [];
+      const last = history.findLast(bar => bar.date.replaceAll('/', '-') <= today);
+      let latest = last ? {
+        date: last.date.replaceAll('/', '-'),
+        price: last.close,
+        changePct: changeFromPrevious(last.close, history[history.indexOf(last) - 1]?.close),
+        source: 'FinMind 日 K'
+      } : null;
+      const recorded = state.premarket?.code === state.selectedStockCode ? state.premarket.close : null;
+      if (recorded && recorded.date <= today && (!latest || recorded.date > latest.date)) latest = recorded;
+      return latest;
     }
 
     async function loadPremarket(code) {
       const date = todayInTaipei();
-      const request = { code, date, status: 'loading', record: null };
+      const closed = window.twseTradingCalendar?.isTradingDate(date) === false;
+      const cachedClose = state.premarket?.code === code ? state.premarket.close : null;
+      const request = { code, date, status: closed ? 'closed' : 'loading', record: null, close: cachedClose };
       state.premarket = request;
       renderPremarketSummary();
 
-      if (window.twseTradingCalendar?.isTradingDate(date) === false) {
-        request.status = 'closed';
-      } else if (location.protocol === 'file:') {
-        request.status = 'file';
+      if (location.protocol === 'file:') {
+        if (!closed) request.status = 'file';
       } else {
         try {
-          const response = await fetch(`data/daily-price-tracking/${date.slice(0, 7)}.csv`, {
-            cache: 'no-cache',
-            signal: AbortSignal.timeout(8000)
-          });
-          if (response.ok) {
-            request.record = readPremarketRecord(await response.text(), date, code);
-          } else if (response.status !== 404) {
-            throw new Error(`HTTP ${response.status}`);
+          const month = date.slice(0, 7);
+          const fetchRecords = async month => {
+            const response = await fetch(`data/daily-price-tracking/${month}.csv`, {
+              cache: 'no-cache',
+              signal: AbortSignal.timeout(8000)
+            });
+            if (response.status === 404) return [];
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return readDailyRecords(await response.text());
+          };
+          const rows = await fetchRecords(month);
+          request.record = closed ? null : findPremarketRecord(rows, date, code);
+          const close = findRecordedClose(rows, date, code);
+          if (close && (!request.close || close.date >= request.close.date)) request.close = close;
+          if (!request.close) {
+            const previousMonth = new Date(`${month}-01T00:00:00Z`);
+            previousMonth.setUTCDate(0);
+            const previousRows = await fetchRecords(previousMonth.toISOString().slice(0, 7)).catch(() => []);
+            request.close = findRecordedClose(previousRows, date, code);
           }
-          request.status = 'ready';
+          if (!closed) request.status = 'ready';
         } catch {
-          request.status = 'error';
+          if (!closed) request.status = 'error';
         }
       }
-      if (state.premarket === request) renderPremarketSummary();
+      if (state.premarket === request) {
+        renderPremarketSummary();
+        renderSummaryBanner();
+      }
     }
 
     function renderPremarketSummary() {
@@ -1099,11 +1164,16 @@
       document.getElementById('stock-sector-badge').textContent = stock.sector;
       document.getElementById('stock-title').textContent = `${stock.code} ${stock.name}`;
       document.getElementById('stock-en-name').textContent = stock.enName;
-      document.getElementById('today-price-label').textContent = base ? `基準價 (${base.date})` : '基準價';
+      const latest = state.chartMode === 'FULL_CYCLE'
+        ? (base && { price: base.close, date: base.date.replaceAll('/', '-'), changePct: base.changePct, source: '全週期示範' })
+        : latestCloseForStock(todayInTaipei());
+      const priceLabel = state.chartMode === 'FULL_CYCLE' ? '示範基準價' : '最新收盤';
+      document.getElementById('today-price-label').textContent = latest ? `${priceLabel}（${latest.date}）` : priceLabel;
 
       const priceEl = document.getElementById('stock-current-price');
-      priceEl.textContent = base ? `$${formatIndicator(base.close)}` : '—';
-      priceEl.style.color = dailyChangeColor(base?.changePct);
+      priceEl.textContent = latest ? `$${formatIndicator(latest.price)}` : '—';
+      priceEl.style.color = dailyChangeColor(latest?.changePct);
+      document.getElementById('stock-close-source').textContent = latest?.source ?? '';
 
       document.getElementById('ma20-label-title').textContent = `生命線 MA${state.maPeriod}`;
       document.getElementById('stock-ma20-val').textContent = formatIndicator(base?.ma20);
