@@ -15,6 +15,14 @@ on:
       timezone: Asia/Taipei
     - cron: '45 17 * * *'
       timezone: Asia/Taipei
+  workflow_call:
+    inputs:
+      mode:
+        type: string
+        required: true
+      trade_date:
+        type: string
+        required: true
   workflow_dispatch:
     inputs:
       mode:
@@ -62,13 +70,16 @@ jobs:
           INPUT_MODE: ${{ inputs.mode }}
           TRADE_DATE: ${{ inputs.trade_date }}
         run: |
-          case "$ACTION_SCHEDULE" in
-            '0 7 * * *'|'20 7 * * *') mode=forecast ;;
-            '0 17 * * *') mode=close ;;
-            '45 17 * * *') mode=retry ;;
-            '') mode="$INPUT_MODE" ;;
-            *) echo "Unrecognized schedule: $ACTION_SCHEDULE"; exit 1 ;;
-          esac
+          if [ -n "$INPUT_MODE" ]; then
+            mode="$INPUT_MODE"
+          else
+            case "$ACTION_SCHEDULE" in
+              '0 7 * * *'|'20 7 * * *') mode=forecast ;;
+              '0 17 * * *') mode=close ;;
+              '45 17 * * *') mode=retry ;;
+              *) echo "Unrecognized schedule: $ACTION_SCHEDULE"; exit 1 ;;
+            esac
+          fi
           node scripts/daily-price-tracking.mjs "$mode" "$TRADE_DATE" --defer-check
       - name: 儲存更新的行情與每月 CSV
         id: persist

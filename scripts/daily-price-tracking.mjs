@@ -111,11 +111,23 @@ async function officialCloses(date, targets, preferLatest, allowFinMind, persist
   return results;
 }
 
-export async function runForecast(records, date, started, collect = collectForecasts, clock = taipeiClock, start = indexStart) {
+async function missingForecasts(records, date, start) {
   const targets = [];
   for (const stock of trackingSymbols(date, start)) {
     if (!(await records.get(date, stock))?.forecast_close) targets.push(stock);
   }
+  return targets;
+}
+
+// 以 runner 真正啟動時的台灣日期判斷，允許延遲的夜間事件救回當日盤前預測。
+export async function recoveryDate(records, now, start = indexStart) {
+  if (now.hour < 7 || now.hour >= 9 || !await isTradingDate(now.date)) return null;
+  const missing = await missingForecasts(records, now.date, start);
+  return missing.length ? now.date : null;
+}
+
+export async function runForecast(records, date, started, collect = collectForecasts, clock = taipeiClock, start = indexStart) {
+  const targets = await missingForecasts(records, date, start);
   if (!targets.length) {
     console.log(`${date}: all forecasts already recorded`);
     return;
@@ -229,6 +241,13 @@ export function closeScheduleDate(now, schedule) {
 }
 
 async function main(mode, requestedDate, option) {
+  if (mode === 'check-recovery') {
+    const now = taipeiClock();
+    const date = await recoveryDate(new MonthlyRecords(recordsDirectory), now);
+    await summary(`盤前備援檢查（台灣）${now.timestamp}，${date ? '有缺漏，啟動補跑' : '無需補跑'}。`);
+    if (date && process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `trade_date=${date}\n`);
+    return;
+  }
   if (mode === 'activate-index') {
     if (indexStart) return;
     const now = taipeiClock();

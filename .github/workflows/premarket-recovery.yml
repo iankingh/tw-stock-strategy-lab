@@ -1,0 +1,55 @@
+name: 台股盤前預測備援
+
+on:
+  schedule:
+    # 隔夜每小時一次，即使 GitHub 延後數小時建立事件，抵達盤前仍可補跑。
+    - cron: '43 0-6,22-23 * * *'
+      timezone: Asia/Taipei
+    - cron: '11,41 7-8 * * *'
+      timezone: Asia/Taipei
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      trade_date: ${{ steps.check.outputs.trade_date }}
+    steps:
+      - name: 依實際台灣時間判斷盤前時段
+        id: clock
+        run: |
+          now=$(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M:%S')
+          echo "備援實際啟動時間（台灣）$now" >> "$GITHUB_STEP_SUMMARY"
+          case "${now:11:2}" in
+            07|08) echo "premarket=true" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - uses: actions/checkout@v6
+        if: steps.clock.outputs.premarket == 'true'
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        if: steps.clock.outputs.premarket == 'true'
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: 查詢當日尚未寫入的盤前預測
+        id: check
+        if: steps.clock.outputs.premarket == 'true'
+        run: node scripts/daily-price-tracking.mjs check-recovery
+
+  recover:
+    needs: check
+    if: needs.check.outputs.trade_date != ''
+    permissions:
+      contents: write
+      pages: write
+    uses: ./.github/workflows/daily-price-tracking.yml
+    with:
+      mode: forecast
+      trade_date: ${{ needs.check.outputs.trade_date }}

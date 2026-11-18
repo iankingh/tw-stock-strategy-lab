@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MonthlyRecords } from '../scripts/price-tracking-records.mjs';
-import { onTimeForecast, runForecast, runClose, retryDates, checkCloses, closeScheduleDate } from '../scripts/daily-price-tracking.mjs';
+import { onTimeForecast, runForecast, runClose, retryDates, checkCloses, closeScheduleDate, recoveryDate } from '../scripts/daily-price-tracking.mjs';
 import { symbols } from '../scripts/price-tracking-market.mjs';
 import { livePerformance } from '../scripts/live-performance.mjs';
 import parameters from '../scripts/daily-model-parameters.json' with { type: 'json' };
@@ -118,4 +118,19 @@ test('準時率包含全日缺席，價差與方向只計入已配對的實盤�
   assert.deepEqual(result.versions.get(parameters.version), {
     onTime: 6, scored: 1, abs: 1, pct: 10, normalized: 1, correct: 1, classified: 1
   });
+});
+
+test('夜間排程延到盤前時只補當天缺檔，休市、盤外及全數完成均跳過', async t => {
+  const records = await tempRecords(t);
+  const date = '2026-11-19';
+  const check = (hour, day = date) => recoveryDate(records, { date: day, hour }, date);
+  for (const hour of [0, 6, 9, 17, 23]) assert.equal(await check(hour), null);
+  assert.equal(await check(7, '2026-11-21'), null);
+  assert.equal(await check(8, '2026-12-25'), null);
+  assert.equal(await check(7), date);
+  for (const stock of symbols) await records.update(date, stock, { forecast_close: '100' });
+  await records.update('2026-11-18', 'TAIEX', { forecast_close: '39000' });
+  assert.equal(await check(8), date);
+  await records.update(date, 'TAIEX', { forecast_close: '40194.91' });
+  assert.equal(await check(8), null);
 });
