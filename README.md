@@ -46,11 +46,11 @@ JSON 每根 K 線的 `selectedMA`、`selectedBiasPct` 及標的摘要的 `select
 
 ## 每日預測與收盤紀錄
 
-GitHub Actions 以台灣時間執行，追蹤 2312、2317、2330、2603、3231、3481 六檔上市股票及加權指數（CSV 代號 `TAIEX`）。每月一份 CSV 存在 [`data/daily-price-tracking/`](https://github.com/iankingh/tw-stock-strategy-lab/tree/main/data/daily-price-tracking)，檔名以交易日的年月組成，例如 `2026-11.csv`。
+排程、工作摘要、行情交易日與匯出時間統一採台灣時間（`Asia/Taipei`，UTC+08:00）。JSON 的 `exportedAt` 使用帶有 `+08:00` 的 ISO 8601 時間。GitHub Actions 追蹤 2312、2317、2330、2603、3231、3481 六檔上市股票及加權指數（CSV 代號 `TAIEX`）。每月一份 CSV 存在 [`data/daily-price-tracking/`](https://github.com/iankingh/tw-stock-strategy-lab/tree/main/data/daily-price-tracking)，檔名以交易日的年月組成，例如 `2026-11.csv`。
 
 欄位依序為「交易日、股票代號、預測收盤價、預測時間、實際收盤價、收盤價取得時間、策略版本、昨收、預測方向」。既有紀錄可讀取，舊預測沒有記錄的欄位留空。
 
-| 時間 | 記錄工作 |
+| 台灣時間 | 記錄工作 |
 | --- | --- |
 | 07:00 | 以截至前一交易日的大盤或個股日 K 分別估計收盤價與漲跌平，記錄昨收與模型版本。盤前工作摘要會列出台灣實際啟動時間。 |
 | 07:20 | 補跑缺漏的盤前預測。已記錄的預測保留原值和時間。 |

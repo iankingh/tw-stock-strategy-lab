@@ -275,26 +275,16 @@
     const CALENDAR_UNAVAILABLE = '證交所日曆涵蓋的交易日不足，暫停產生模擬。';
 
     function formatToSlashDate(dateInput) {
-      if (!dateInput) {
-        const now = new Date();
-        return `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
-      }
       if (typeof dateInput === 'string') {
-        const cleaned = dateInput.trim().replace(/-/g, '/');
-        const parts = cleaned.split('/');
-        if (parts.length === 3) {
-          const y = parts[0].padStart(4, '20');
-          const m = parts[1].padStart(2, '0');
-          const d = parts[2].slice(0, 2).padStart(2, '0');
-          return `${y}/${m}/${d}`;
-        }
+        // 交易日及未標時區的台灣行情時間，直接保留其本地日期。
+        const local = /^(\d{4}|\d{2})[-/](\d{1,2})[-/](\d{1,2})(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?$/.exec(dateInput.trim());
+        if (local) return [local[1].padStart(4, '20'), local[2].padStart(2, '0'), local[3].padStart(2, '0')].join('/');
       }
-      const dt = new Date(dateInput);
-      if (isNaN(dt.getTime())) {
-        const now = new Date();
-        return `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
-      }
-      return `${dt.getFullYear()}/${String(dt.getMonth() + 1).padStart(2, '0')}/${String(dt.getDate()).padStart(2, '0')}`;
+      const instant = new Date(dateInput);
+      const date = dateInput != null && Number.isFinite(instant.getTime())
+        ? window.twseTradingCalendar.taipeiClock(instant).date
+        : todayInTaipei();
+      return date.replaceAll('-', '/');
     }
 
     function getDateWithWeekday(slashDateStr) {
@@ -305,7 +295,7 @@
     }
 
     function todayInTaipei() {
-      return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+      return window.twseTradingCalendar.taipeiClock().date;
     }
 
     function collectTradingDates(start, count, direction) {
@@ -855,9 +845,7 @@
       state.quoteStatus = 'loading';
       rebuildAndRenderAll();
 
-      const start = new Date();
-      start.setUTCDate(start.getUTCDate() - 260);
-      const startDate = start.toISOString().slice(0, 10);
+      const startDate = window.twseTradingCalendar.shiftDate(todayInTaipei(), -260);
       const params = new URLSearchParams({ dataset: 'TaiwanStockPrice', data_id: code, start_date: startDate });
 
       try {
@@ -1145,9 +1133,8 @@
           const close = findRecordedClose(rows, date, code);
           if (close && (!request.close || close.date >= request.close.date)) request.close = close;
           if (!request.close) {
-            const previousMonth = new Date(`${month}-01T00:00:00Z`);
-            previousMonth.setUTCDate(0);
-            const previousRows = await fetchRecords(previousMonth.toISOString().slice(0, 7)).catch(() => []);
+            const previousMonth = window.twseTradingCalendar.shiftDate(month + '-01', -1).slice(0, 7);
+            const previousRows = await fetchRecords(previousMonth).catch(() => []);
             request.close = findRecordedClose(previousRows, date, code);
           }
           if (!closed) request.status = 'ready';
@@ -1864,7 +1851,7 @@
       const last = state.chartData.at(-1);
       const history = state.chartData.slice(0, state.currentBarIndex + 1);
       const payload = {
-        exportedAt: new Date().toISOString(),
+        exportedAt: window.twseTradingCalendar.taipeiClock().iso,
         todayBaseline: base.date,
         twoMonthForecastEnd: last.isForecast ? last.date : null,
         stock: {

@@ -3,7 +3,7 @@ import { MonthlyRecords } from './price-tracking-records.mjs';
 import { onTimeForecast, validDate } from './daily-price-tracking.mjs';
 import { readStart } from './taiex.mjs';
 import { direction, directions } from './daily-model.mjs';
-import { isTradingDate, shiftDate, symbols } from './price-tracking-market.mjs';
+import { isTradingDate, shiftDate, symbols, taipeiClock } from './price-tracking-market.mjs';
 
 export async function livePerformance(records, start, end, targets = symbols) {
   let days = 0, complete = 0, timely = 0;
@@ -39,9 +39,7 @@ export async function livePerformance(records, start, end, targets = symbols) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [start, end] = process.argv.slice(2);
-  const now = new Date();
-  const today = now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
-  const hour = Number(now.toLocaleTimeString('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', hourCycle: 'h23' }));
+  const { date: today, hour } = taipeiClock();
   const cutoff = hour < 9 ? shiftDate(today, -1) : today;
   if (!validDate(start) || !validDate(end) || start < '2026-11-17' || end < start || end > cutoff) {
     throw new Error(`用法：node scripts/live-performance.mjs 起日 迄日，範圍為 2026-11-17 至 ${cutoff}`);

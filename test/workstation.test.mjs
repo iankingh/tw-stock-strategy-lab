@@ -148,3 +148,20 @@ test('首頁預設大盤歷史日 K，前次個股查詢晚回來仍顯示指數
   assert.equal(document.getElementById('stock-close-source').textContent, '證交所日 K');
   assert.equal(evaluate("state.chartData.every(b => b.source === 'twse' && !b.isForecast)"), true);
 });
+
+test('台灣跨月午夜的交易日、星期及 JSON 時間一致', async () => {
+  const instant = new Date('2026-11-30T16:00:00.123Z');
+  const clock = calendar.taipeiClock(instant);
+  assert.equal(clock.timestamp, '2026-12-01 00:00:00');
+  assert.equal(clock.hour, 0);
+  assert.equal(new Date(clock.iso).getTime(), instant.getTime());
+  const app = workstation();
+  app.ctx.window.twseTradingCalendar = { ...calendar, taipeiClock: (time = instant) => calendar.taipeiClock(time) };
+  for (const input of ['2026-11-30T16:00:00.123Z', '2026-11-30T08:00:00-08:00', '2026-12-01 00:00:00', '2026/12/1']) {
+    app.ctx.input = input;
+    assert.equal(vm.runInContext('getDateWithWeekday(input)', app.ctx), '2026/12/01 (週二)');
+  }
+  app.ctx.bars = app.chart([100], 20);
+  vm.runInContext('state.chartData = bars; state.currentBarIndex = 0; exportStrategyJSON()', app.ctx);
+  assert.equal((await app.exported()).exportedAt, '2026-12-01T00:00:00.123+08:00');
+});

@@ -6,27 +6,13 @@ import parameters from './daily-model-parameters.json' with { type: 'json' };
 import { directions, features, predictDaily } from './daily-model.mjs';
 import { MonthlyRecords } from './price-tracking-records.mjs';
 import {
-  finMindPrices, historicalTWSEClose, isTradingDate, latestTWSEPrices, previousTradingDate, shiftDate, symbols
+  finMindPrices, historicalTWSEClose, isTradingDate, latestTWSEPrices, previousTradingDate, shiftDate, symbols, taipeiClock
 } from './price-tracking-market.mjs';
 
 const recordsDirectory = fileURLToPath(new URL('../data/daily-price-tracking', import.meta.url));
 const indexStart = await readStart();
 export function trackingSymbols(date, start = indexStart) {
   return start && date >= start ? [...symbols, 'TAIEX'] : symbols;
-}
-
-const timeZone = new Intl.DateTimeFormat('en-GB', {
-  timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
-  hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
-});
-
-function taipeiClock() {
-  const parts = Object.fromEntries(timeZone.formatToParts(new Date()).map(({ type, value }) => [type, value]));
-  const date = `${parts.year}-${parts.month}-${parts.day}`;
-  return {
-    date, hour: Number(parts.hour),
-    timestamp: `${date} ${parts.hour}:${parts.minute}:${parts.second}`
-  };
 }
 
 export function validDate(date) {

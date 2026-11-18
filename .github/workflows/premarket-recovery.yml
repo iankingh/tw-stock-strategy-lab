@@ -9,6 +9,9 @@ on:
       timezone: Asia/Taipei
   workflow_dispatch:
 
+env:
+  TZ: Asia/Taipei
+
 permissions:
   contents: read
 
@@ -23,7 +26,7 @@ jobs:
       - name: 依實際台灣時間判斷盤前時段
         id: clock
         run: |
-          now=$(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M:%S')
+          now=$(date '+%Y-%m-%d %H:%M:%S')
           echo "備援實際啟動時間（台灣）$now" >> "$GITHUB_STEP_SUMMARY"
           case "${now:11:2}" in
             07|08) echo "premarket=true" >> "$GITHUB_OUTPUT" ;;

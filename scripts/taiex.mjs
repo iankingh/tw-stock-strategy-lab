@@ -1,7 +1,7 @@
 import { access, readFile, writeFile, rename } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
-import { isTradingDate, shiftDate } from './price-tracking-market.mjs';
+import { isTradingDate, shiftDate, taipeiClock } from './price-tracking-market.mjs';
 
 const archive = new URL('../data/taiex.js', import.meta.url);
 const require = createRequire(import.meta.url);
@@ -83,7 +83,7 @@ export async function activationDate(date, hour) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [start, end] = process.argv.slice(2);
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+  const today = taipeiClock().date;
   if (![start, end].every(d => /^\d{4}-\d{2}-\d{2}$/.test(d) && shiftDate(d, 0) === d) || end < start || end > today) {
     throw new Error('用法：node scripts/taiex.mjs YYYY-MM-DD YYYY-MM-DD');
   }

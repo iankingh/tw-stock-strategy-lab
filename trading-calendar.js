@@ -19,6 +19,22 @@
     }
   };
 
+  const taipeiFormatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+  });
+
+  function taipeiClock(instant = new Date()) {
+    const parts = Object.fromEntries(taipeiFormatter.formatToParts(instant).map(({ type, value }) => [type, value]));
+    const date = `${parts.year}-${parts.month}-${parts.day}`;
+    const time = `${parts.hour}:${parts.minute}:${parts.second}`;
+    const millis = String(instant.getUTCMilliseconds()).padStart(3, '0');
+    return {
+      date, hour: Number(parts.hour), timestamp: `${date} ${time}`,
+      iso: `${date}T${time}.${millis}+08:00`
+    };
+  }
+
   function shiftDate(date, days) {
     const shifted = new Date(`${date}T00:00:00Z`);
     shifted.setUTCDate(shifted.getUTCDate() + days);
@@ -39,7 +55,7 @@
     return isWeekday(date);
   }
 
-  const calendar = { shiftDate, isWeekday, isTradingDate };
+  const calendar = { shiftDate, isWeekday, isTradingDate, taipeiClock };
   if (typeof module === 'object' && module.exports) {
     module.exports = calendar;
   } else {

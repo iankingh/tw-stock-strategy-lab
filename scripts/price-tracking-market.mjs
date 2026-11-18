@@ -5,7 +5,7 @@ export const symbols = ['2312', '2317', '2330', '2603', '3231', '3481'];
 const calendarCache = new Map();
 const monthlyQuotes = new Map();
 const calendarUrl = 'https://www.twse.com.tw/rwd/zh/holidaySchedule/holidaySchedule';
-export const { shiftDate } = tradingCalendar;
+export const { shiftDate, taipeiClock } = tradingCalendar;
 
 async function getJSON(url, params = {}) {
   const endpoint = new URL(url);
