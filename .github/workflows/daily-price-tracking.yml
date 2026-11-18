@@ -30,7 +30,7 @@ jobs:
   record:
     if: github.ref == 'refs/heads/main' && github.event.schedule != '15 9 * * *' && inputs.mode != 'audit'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     permissions:
       contents: write
     concurrency:
@@ -39,12 +39,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: main
           fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
           package-manager-cache: false
       - name: 取得並記錄價格
+        id: collect
         env:
           ACTION_SCHEDULE: ${{ github.event.schedule }}
           INPUT_MODE: ${{ inputs.mode }}
@@ -57,7 +59,7 @@ jobs:
             '') mode="$INPUT_MODE" ;;
             *) echo "Unrecognized schedule: $ACTION_SCHEDULE"; exit 1 ;;
           esac
-          node scripts/daily-price-tracking.mjs "$mode" "$TRADE_DATE"
+          node scripts/daily-price-tracking.mjs "$mode" "$TRADE_DATE" --defer-check
       - name: 儲存更新的每月 CSV
         if: github.event_name != 'workflow_dispatch' || inputs.mode != 'verify'
         run: |
@@ -71,6 +73,12 @@ jobs:
             git pull --rebase origin main
             git push origin HEAD:main
           fi
+      - name: 檢查補抓後的收盤價
+        if: steps.collect.outputs.retry_date != ''
+        env:
+          RETRY_DATE: ${{ steps.collect.outputs.retry_date }}
+          RETRY_SCOPE: ${{ steps.collect.outputs.retry_scope }}
+        run: node scripts/daily-price-tracking.mjs check-close "$RETRY_DATE" "$RETRY_SCOPE"
   audit:
     name: 檢查盤前預測缺漏
     if: github.ref == 'refs/heads/main' && (github.event.schedule == '15 9 * * *' || inputs.mode == 'audit')
@@ -79,6 +87,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: main
           persist-credentials: false
       - uses: actions/setup-node@v6
         with:

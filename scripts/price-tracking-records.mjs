@@ -8,10 +8,14 @@ const columnTitles = {
   forecast_at: '預測時間',
   actual_close: '實際收盤價',
   actual_recorded_at: '收盤價取得時間',
-  model_version: '策略版本'
+  model_version: '策略版本',
+  previous_close: '昨收',
+  forecast_direction: '預測方向'
 };
 const columns = Object.keys(columnTitles);
 const header = Object.values(columnTitles).join(',');
+const oldColumns = columns.slice(0, 7);
+const oldHeader = oldColumns.map(key => columnTitles[key]).join(',');
 const legacyColumns = [
   'trade_date', 'stock_id', 'forecast_close', 'forecast_at', 'history_through',
   'previous_close', 'model_version', 'actual_close', 'actual_recorded_at', 'actual_source'
@@ -39,8 +43,8 @@ export class MonthlyRecords {
     const rows = new Map();
     if (text) {
       const [first, ...lines] = text.replace(/^\uFEFF/, '').trimEnd().split(/\r?\n/);
-      if (first !== header && first !== legacyHeader) throw new Error(`Unexpected CSV header in ${filename}`);
-      const inputColumns = first === legacyHeader ? legacyColumns : columns;
+      const inputColumns = new Map([[header, columns], [oldHeader, oldColumns], [legacyHeader, legacyColumns]]).get(first);
+      if (!inputColumns) throw new Error(`Unexpected CSV header in ${filename}`);
       const fieldPositions = columns.map((column) => inputColumns.indexOf(column));
 
       for (const line of lines) {
@@ -50,7 +54,7 @@ export class MonthlyRecords {
         if (fields.length !== inputColumns.length || !date.startsWith(`${month}-`) || rows.has(key)) {
           throw new Error(`Invalid or duplicate row in ${filename}: ${key}`);
         }
-        const row = Object.fromEntries(columns.map((column, index) => [column, fields[fieldPositions[index]]]));
+        const row = Object.fromEntries(columns.map((column, index) => [column, fields[fieldPositions[index]] ?? '']));
         for (const column of ['forecast_at', 'actual_recorded_at']) {
           const converted = toDisplayTime(row[column]);
           if (converted !== row[column]) this.changed.add(month);

@@ -20,6 +20,37 @@
       font-family: 'JetBrains Mono', monospace;
     }
 
+    :focus-visible {
+      outline: 2px solid #fbbf24;
+      outline-offset: 3px;
+    }
+
+    [hidden] { display: none !important; }
+    .chart-button {
+      min-height: 36px;
+      border: 1px solid #334155;
+      border-radius: 7px;
+      padding: 0 0.65rem;
+      color: #e2e8f0;
+    }
+    .chart-button:hover:not(:disabled) { background: #1e293b; }
+    .chart-button:disabled { opacity: 0.45; }
+    #main-strategy-svg { touch-action: pan-y pinch-zoom; }
+    [data-select-bar][aria-pressed="true"], [data-rule-jump][aria-pressed="true"] {
+      border-color: #fbbf24;
+      background: #221d18;
+    }
+    @media (max-width: 767px) {
+      .chart-button { min-height: 44px; }
+    }
+
+    @media (max-width: 767px) {
+      #stock-controls[data-open="false"] { display: none; }
+      #stock-controls button, #stock-controls input, #chart-tools button, #chart-tools select, #chart-tools summary {
+        min-height: 40px;
+      }
+    }
+
     /* 自訂捲軸樣式 */
     ::-webkit-scrollbar {
       width: 6px;
@@ -40,49 +71,19 @@
 <body class="min-h-screen bg-[#0b0e14] text-slate-100 selection:bg-amber-500/30">
 
   <!-- 頂部導覽與股價搜尋 -->
-  <header class="sticky top-0 z-30 border-b border-slate-800/80 bg-[#0f131c]/95 backdrop-blur-md px-4 lg:px-6 py-3">
-    <div class="max-w-[1440px] mx-auto flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
-      <!-- 品牌標題與日 K 更新狀態 -->
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg shadow-amber-500/20 shrink-0">
-            <svg class="w-6 h-6 text-slate-950 stroke-[2.5]" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-            </svg>
-          </div>
-          <div>
-            <div class="flex flex-wrap items-center gap-2">
-              <h1 class="text-lg font-bold tracking-tight text-white">台股複合交易策略工作站</h1>
-              <span id="status-badge-text" role="status" class="text-[11px] font-medium px-2.5 py-0.5 rounded-full border bg-amber-500/15 text-amber-300 border-amber-500/30">準備載入日 K</span>
-            </div>
-            <p class="text-xs text-slate-400">
-              純前端獨立執行版 × 葛蘭碧八大法則 × 布林通道過濾 × MACD 背離 × Price Action
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <!-- 標的快速切換與最新股價搜尋 -->
-      <div class="flex flex-wrap items-center gap-2">
-        <!-- 預設熱門台股按鈕群 -->
-        <div id="preset-buttons-container" class="flex flex-wrap items-center bg-slate-900/90 p-1 rounded-lg border border-slate-800 gap-1"></div>
-
-        <!-- 搜尋任意台股代號 -->
+  <header class="border-b border-slate-800/80 bg-[#0f131c] px-3 py-2 md:px-6 md:py-3">
+    <div class="max-w-[1440px] mx-auto flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+      <h1 class="hidden md:block text-lg font-bold tracking-tight text-white">台股複合交易策略工作站</h1>
+      <h1 id="mobile-stock-title" class="min-w-0 flex-1 truncate text-base font-bold md:hidden">3481 群創</h1>
+      <button id="stock-controls-toggle" type="button" aria-expanded="false" aria-controls="stock-controls"
+        class="md:hidden min-h-11 rounded-lg border border-slate-700 px-4 text-sm font-semibold text-amber-300">換股</button>
+      <span id="status-badge-text" role="status" class="order-3 w-full text-xs text-slate-300 md:order-none md:w-auto">準備載入日 K</span>
+      <div id="stock-controls" data-open="false" class="order-4 w-full flex flex-wrap items-center gap-2 py-2 md:order-none md:w-auto md:py-0">
+        <div id="preset-buttons-container" class="flex flex-wrap items-center gap-1"></div>
         <form id="stock-search-form" class="flex items-center">
-          <div class="relative">
-            <input
-              id="custom-stock-input"
-              type="text"
-              placeholder="輸入代號 (如 2409 友達)"
-              class="bg-slate-900 border border-slate-700/80 rounded-l-lg pl-3 pr-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-amber-500 w-40"
-            />
-          </div>
-          <button
-            type="submit"
-            class="bg-amber-500/20 hover:bg-amber-500/30 border border-l-0 border-amber-500/50 text-amber-300 text-xs px-3 py-1.5 rounded-r-lg font-semibold transition-colors"
-          >
-            查日 K
-          </button>
+          <input id="custom-stock-input" type="text" aria-label="股票代號" placeholder="股票代號，如 2409"
+            class="w-36 min-w-0 rounded-l-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm placeholder:text-slate-400" />
+          <button type="submit" class="rounded-r-lg border border-l-0 border-amber-500/50 bg-amber-500/20 px-3 py-1.5 text-sm font-semibold text-amber-300">查日 K</button>
         </form>
       </div>
     </div>
@@ -95,199 +96,117 @@
   </div>
 
   <!-- 主內容區 -->
-  <main class="max-w-[1440px] mx-auto px-4 lg:px-6 py-5 space-y-5">
+  <main class="max-w-[1440px] mx-auto px-3 py-3 md:px-6 md:py-5 space-y-4">
+    <section class="rounded-xl border border-slate-800 bg-[#151924] p-3 md:p-4">
+      <div class="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:gap-5">
+        <div>
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <h2 id="stock-title" class="hidden truncate text-lg font-bold md:block">3481 群創</h2>
+              <span id="stock-en-name" class="hidden text-xs text-slate-400 md:inline"></span>
+              <span id="stock-sector-badge" class="hidden text-xs text-slate-400 md:inline"></span>
+              <div id="stock-summary-status" class="text-xs font-medium text-slate-300"></div>
+            </div>
+            <div class="shrink-0 text-right">
+              <div id="today-price-label" class="text-xs text-slate-300">基準價</div>
+              <div id="stock-current-price" class="font-mono text-xl font-bold text-slate-200">—</div>
+            </div>
+          </div>
+          <div class="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+            <span><span id="ma20-label-title" class="text-slate-300">MA20</span> <b id="stock-ma20-val" class="font-mono text-amber-300">—</b></span>
+            <span id="stock-ma60-summary"><span class="text-slate-300">MA60</span> <b id="stock-ma60-val" class="font-mono text-sky-300">—</b></span>
+          </div>
+        </div>
 
-    <div class="space-y-5">
+        <div id="premarket-summary" class="border-t border-slate-800 pt-2 md:border-l md:border-t-0 md:pl-5 md:pt-0">
+          <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h3 class="text-sm font-semibold text-slate-100">盤前預測</h3>
+            <time id="premarket-date" class="font-mono text-xs text-slate-400"></time>
+          </div>
+          <p id="premarket-status" role="status" class="mt-1 text-xs text-slate-300"></p>
+          <div id="premarket-values" class="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs" hidden>
+            <span class="text-slate-300">預估收盤 <strong id="premarket-price" class="font-mono text-base text-slate-100"></strong></span>
+            <span class="text-slate-300">方向 <strong id="premarket-direction" class="text-sm"></strong></span>
+            <time id="premarket-recorded" class="font-mono text-slate-400"></time>
+          </div>
+        </div>
 
-      <!-- 頂部標的戰情摘要橫幅 -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 bg-gradient-to-r from-[#141923] via-[#161c28] to-[#141923] border border-slate-800/90 rounded-2xl p-4 shadow-xl">
-        <div class="lg:col-span-4 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-800 pb-3 lg:pb-0 lg:pr-4">
-          <div class="flex items-start justify-between">
-            <div>
-              <span id="stock-sector-badge" class="text-xs font-medium text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                光電面板景氣循環股
-              </span>
-              <div class="flex items-baseline gap-2 mt-1.5">
-                <h2 id="stock-title" class="text-2xl font-bold text-white">3481 群創</h2>
-                <span id="stock-en-name" class="text-xs text-slate-400 font-mono">Innolux</span>
+        <details id="manual-price-details" class="text-xs text-slate-300 md:self-start">
+          <summary class="min-h-8 cursor-pointer py-1.5 font-medium text-slate-300 hover:text-white">校正基準價</summary>
+          <form id="manual-price-form" class="mt-2 flex items-center">
+            <input id="manual-price-input" aria-label="校正後基準價" type="number" min="0.01" step="0.01"
+              class="w-24 rounded-l-lg border border-slate-700 bg-slate-950 px-2 py-1.5 font-mono text-sm text-white" />
+            <button type="submit" class="rounded-r-lg border border-l-0 border-amber-500/50 bg-amber-500/15 px-2.5 py-1.5 text-sm font-semibold text-amber-300">套用</button>
+          </form>
+          <p id="stock-strategy-advice" class="mt-1 text-xs text-slate-300"></p>
+        </details>
+      </div>
+    </section>
+
+    <div class="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-12">
+        <section class="min-w-0 rounded-xl border border-slate-800 bg-[#131722] p-3 md:p-4 xl:col-span-8" aria-label="日 K 圖表">
+          <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div class="inline-flex max-w-full flex-wrap gap-1 rounded-lg bg-slate-950/80 p-1" aria-label="圖表模式" role="group">
+              <button type="button" id="mode-btn-forecast" onclick="setChartMode('RECENT_FORECAST')">日 K ＋ 情境</button>
+              <button type="button" id="mode-btn-fullcycle" onclick="setChartMode('FULL_CYCLE')">全週期示範</button>
+            </div>
+            <p id="chart-data-source" class="text-xs leading-relaxed text-slate-300"></p>
+          </div>
+          <div id="chart-top-hud" class="mb-1 flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs"></div>
+
+          <div class="relative min-w-0 w-full select-none">
+            <svg id="main-strategy-svg" viewBox="0 0 1000 567" tabindex="0" role="group"
+              aria-label="K 線圖，使用左右方向鍵選取交易日，按 Home 回基準日"
+              class="block h-auto w-full cursor-crosshair"></svg>
+          </div>
+          <div id="chart-navigation" class="my-2 flex flex-wrap items-center gap-1.5 text-sm" aria-label="選取交易日" role="group" hidden>
+            <button type="button" data-day-step="-1" class="chart-button" onclick="moveChartSelection(-1)">前一日</button>
+            <button type="button" data-day-step="1" class="chart-button" onclick="moveChartSelection(1)">後一日</button>
+            <button type="button" class="chart-button" onclick="resetChartSelection()">回基準日</button>
+            <span id="chart-selection-status" class="sr-only" role="status"></span>
+          </div>
+
+          <div id="chart-legend" class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-300">
+            <span data-legend="granville" class="inline-flex items-center gap-1.5"><i class="inline-block h-0.5 w-3 bg-amber-400"></i><span id="legend-ma-period">MA20</span></span>
+            <span data-legend="ma60" class="inline-flex items-center gap-1.5"><i class="inline-block w-3 border-t border-dashed border-sky-400"></i>MA60</span>
+            <span data-legend="bollinger" class="inline-flex items-center gap-1.5"><i class="inline-block h-2 w-3 border border-blue-400/50 bg-blue-500/20"></i>布林通道 <span id="legend-bb-std">2.0</span>σ</span>
+          </div>
+
+          <details id="chart-tools" class="mt-3 border-t border-slate-800 pt-1 text-sm text-slate-300">
+            <summary class="min-h-10 cursor-pointer py-2 font-semibold text-slate-100">圖層與法則</summary>
+            <div class="space-y-3 pb-2">
+              <div class="flex flex-wrap gap-1.5" role="group" aria-label="圖層">
+                <button type="button" id="filter-btn-granville" onclick="toggleFilter('granville')">葛蘭碧均線</button>
+                <button type="button" id="filter-btn-bollinger" onclick="toggleFilter('bollinger')">布林通道</button>
+                <button type="button" id="filter-btn-macd" onclick="toggleFilter('macd')">MACD</button>
+                <button type="button" id="filter-btn-pa" onclick="toggleFilter('priceAction')">關鍵 K 線</button>
+              </div>
+              <div id="rule-jump-buttons" class="flex flex-wrap gap-1.5" role="group" aria-label="定位葛蘭碧法則"></div>
+              <p id="rule-jump-status" role="status" class="text-sm text-amber-300" hidden></p>
+              <div class="flex flex-wrap items-center gap-3 text-sm">
+                <label class="flex items-center gap-1.5">均線
+                  <select id="select-ma-period" onchange="updateIndicatorParams()" class="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-slate-200">
+                    <option value="10">MA10</option>
+                    <option value="20" selected>MA20</option>
+                    <option value="60">MA60</option>
+                  </select>
+                </label>
+                <label class="flex items-center gap-1.5">布林標準差
+                  <select id="select-bb-std" onchange="updateIndicatorParams()" class="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-slate-200">
+                    <option value="1.5">1.5 σ</option>
+                    <option value="2.0" selected>2.0 σ</option>
+                    <option value="2.5">2.5 σ</option>
+                  </select>
+                </label>
               </div>
             </div>
-            <div class="text-right">
-              <div id="today-price-label" class="text-xs text-slate-400">基準價</div>
-              <div id="stock-current-price" class="text-2xl font-mono font-bold text-slate-200">—</div>
-            </div>
+          </details>
+          <div class="mt-2 flex flex-wrap gap-2 border-t border-slate-800 pt-2 text-sm">
+            <button type="button" onclick="exportChartDataCSV()" class="chart-button" disabled>下載 CSV</button>
+            <button type="button" onclick="exportStrategyJSON()" class="chart-button" disabled>下載 JSON</button>
           </div>
-
-          <div class="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-slate-800/70 text-xs">
-            <div>
-              <span id="ma20-label-title" class="text-slate-400 block">生命線 MA20</span>
-              <span id="stock-ma20-val" class="font-mono font-semibold text-amber-400">—</span>
-            </div>
-            <div>
-              <span class="text-slate-400 block">季線 MA60</span>
-              <span id="stock-ma60-val" class="font-mono font-semibold text-sky-400">—</span>
-            </div>
-            <div>
-              <span class="text-slate-400 block">S4 預設情境點</span>
-              <span id="stock-target-val" class="font-mono font-semibold text-emerald-400">—</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="lg:col-span-8 flex flex-col justify-between pl-0 lg:pl-2">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div class="flex flex-wrap items-center gap-2">
-              <span id="stock-summary-status" class="text-sm font-bold text-white"></span>
-            </div>
-            <div class="flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-lg border border-slate-800">
-              <button
-                id="mode-btn-forecast"
-                onclick="setChartMode('RECENT_FORECAST')"
-                class="px-3 py-1 rounded text-xs font-semibold transition-all bg-amber-500 text-slate-950 shadow"
-              >
-                最近日 K ＋ 未來情境模擬
-              </button>
-              <button
-                id="mode-btn-fullcycle"
-                onclick="setChartMode('FULL_CYCLE')"
-                class="px-3 py-1 rounded text-xs font-semibold transition-all text-slate-400 hover:text-white"
-              >
-                葛蘭碧全週期示範
-              </button>
-            </div>
-          </div>
-
-          <div class="mt-2 bg-slate-900/70 p-3 rounded-xl border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <p id="stock-strategy-advice" class="text-xs text-slate-300 leading-relaxed"></p>
-            <form id="manual-price-form" class="flex items-center shrink-0">
-              <label for="manual-price-input" class="text-xs text-slate-400 mr-1.5">校正基準價</label>
-              <input
-                id="manual-price-input"
-                type="number"
-                min="0.01"
-                step="0.01"
-                class="bg-slate-950 border border-slate-700 rounded-l-lg px-2 py-1 text-xs text-white w-24 focus:outline-none focus:border-amber-500 font-mono"
-              />
-              <button
-                type="submit"
-                class="bg-emerald-500/20 hover:bg-emerald-500/30 border border-l-0 border-emerald-500/50 text-emerald-300 text-xs px-2.5 py-1 rounded-r-lg font-semibold transition-colors"
-              >
-                套用
-              </button>
-            </form>
-          </div>
-        </div>
-      </div>
-
-      <!-- 控制列：四維度策略圖層開關 & 葛蘭碧八大買賣點快速定位 -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div class="lg:col-span-6 bg-[#151924] border border-slate-800/90 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-2">
-          <div class="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
-            <span class="text-amber-400">❖</span>
-            <span>四維度複合濾網圖層：</span>
-          </div>
-          <div class="flex flex-wrap items-center gap-1.5">
-            <button id="filter-btn-granville" onclick="toggleFilter('granville')" class="px-2.5 py-1 rounded-lg text-xs font-medium border transition-all bg-amber-500/20 border-amber-500/60 text-amber-300">
-              1. 葛蘭碧均線
-            </button>
-            <button id="filter-btn-bollinger" onclick="toggleFilter('bollinger')" class="px-2.5 py-1 rounded-lg text-xs font-medium border transition-all bg-blue-500/20 border-blue-500/60 text-blue-300">
-              2. 布林通道過濾
-            </button>
-            <button id="filter-btn-macd" onclick="toggleFilter('macd')" class="px-2.5 py-1 rounded-lg text-xs font-medium border transition-all bg-purple-500/20 border-purple-500/60 text-purple-300">
-              3. MACD 動能確認
-            </button>
-            <button id="filter-btn-pa" onclick="toggleFilter('priceAction')" class="px-2.5 py-1 rounded-lg text-xs font-medium border transition-all bg-emerald-500/20 border-emerald-500/60 text-emerald-300">
-              4. PA 關鍵K線
-            </button>
-          </div>
-        </div>
-
-        <div class="lg:col-span-6 bg-[#151924] border border-slate-800/90 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-2">
-          <div class="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
-            <span class="text-amber-400">⊕</span>
-            <span>點擊定位八大法則點位：</span>
-          </div>
-          <div id="rule-jump-buttons" class="flex flex-wrap items-center gap-1.5"></div>
-          <p id="rule-jump-status" role="status" class="w-full text-xs text-amber-300" hidden></p>
-        </div>
-      </div>
-
-      <!-- 經典清爽雙欄主視覺：左側 8 欄專業 K 線 + MACD 圖表，右側 4 欄四維度檢核與 2 個月預測劇本 -->
-      <div class="grid grid-cols-1 xl:grid-cols-12 gap-4">
-        <!-- 左側 8 欄：K 線 + 布林 + 均線 + MACD 雙面板圖表 -->
-        <div class="xl:col-span-8 bg-[#131722] border border-slate-800 rounded-xl p-4 shadow-2xl flex flex-col justify-between">
-          <!-- 圖表頂部固定狀態列：顯示 YYYY/MM/DD (週X) 與完整指標數值 -->
-          <div id="chart-top-hud" class="flex flex-wrap items-center justify-between gap-2 pb-3 mb-2 border-b border-slate-800/80 text-xs font-mono"></div>
-
-          <div class="mb-3 px-1 text-xs leading-relaxed">
-            <p id="chart-data-source" class="font-medium text-slate-100"></p>
-            <p class="text-slate-400">投資有風險。圖表與模擬僅供研究與教學參考。</p>
-          </div>
-
-          <!-- SVG 畫布容器 -->
-          <div class="relative w-full overflow-hidden select-none">
-            <svg
-              id="main-strategy-svg"
-              viewBox="0 0 1000 567"
-              class="w-full h-auto cursor-crosshair"
-            ></svg>
-          </div>
-
-          <!-- 圖表圖例、參數與匯出 -->
-          <div class="flex flex-wrap items-center justify-between gap-4 pt-3 mt-2 border-t border-slate-800/80 text-xs text-slate-400">
-            <div class="flex flex-wrap items-center gap-4">
-              <span class="flex items-center gap-1.5">
-                <span class="w-3 h-0.5 bg-amber-400 inline-block"></span>
-                葛蘭碧生命線 (<span id="legend-ma-period">MA20</span>)
-              </span>
-              <span class="flex items-center gap-1.5">
-                <span class="w-3 h-0.5 bg-sky-400 inline-block border-b border-dashed"></span>
-                季線趨勢線 (MA60)
-              </span>
-              <span class="flex items-center gap-1.5">
-                <span class="w-3 h-2 bg-blue-500/20 border border-blue-400/50 inline-block rounded-sm"></span>
-                布林通道 (<span id="legend-bb-std">2.0</span>σ)
-              </span>
-            </div>
-
-            <div class="flex flex-wrap items-center gap-3">
-              <label class="flex items-center gap-1.5">
-                <span>均線週期:</span>
-                <select id="select-ma-period" onchange="updateIndicatorParams()" class="bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-slate-200">
-                  <option value="10">10 MA (雙週線)</option>
-                  <option value="20" selected>20 MA (月線生命線)</option>
-                  <option value="60">60 MA (季線)</option>
-                </select>
-              </label>
-              <label class="flex items-center gap-1.5">
-                <span>布林標準差:</span>
-                <select id="select-bb-std" onchange="updateIndicatorParams()" class="bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-slate-200">
-                  <option value="1.5">1.5 σ</option>
-                  <option value="2.0" selected>2.0 σ (標準)</option>
-                  <option value="2.5">2.5 σ (極端乖離)</option>
-                </select>
-              </label>
-              <div class="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onclick="exportChartDataCSV()"
-                  class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 font-semibold transition-colors disabled:opacity-50"
-                  disabled
-                >
-                  下載 CSV
-                </button>
-                <button
-                  type="button"
-                  onclick="exportStrategyJSON()"
-                  class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 font-semibold transition-colors disabled:opacity-50"
-                  disabled
-                >
-                  下載 JSON
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+          <p class="mt-2 text-xs text-slate-400">圖表與情境模擬僅供研究與教學參考。</p>
+        </section>
 
         <!-- 右側：四維度檢核表與未來情境模擬 -->
         <div class="xl:col-span-4 flex flex-col gap-4">
@@ -307,7 +226,7 @@
                 </div>
               </div>
             </div>
-            <div id="checklist-items-container" class="space-y-2.5"></div>
+            <div id="checklist-items-container" class="divide-y divide-slate-800"></div>
           </div>
 
           <!-- 卡片 2：未來情境模擬 -->
@@ -318,7 +237,6 @@
             <div id="scenario-cards-container" class="space-y-2.5 text-xs"></div>
           </div>
         </div>
-      </div>
     </div>
 
     <!-- 底部葛蘭碧八大買賣點完整速查矩陣 -->
@@ -560,10 +478,14 @@
       maPeriod: 20,
       bbStd: 2.0,
       hoveredIndex: null,
-      selectedRuleId: 'B2',
+      selectedBarDate: null,
+      premarket: null,
       chartData: [],
       currentBarIndex: 55
     };
+
+    const chartPadLeft = 16;
+    const chartPadRight = 68;
 
     // 台股慣例為紅漲綠跌。
     const colors = {
@@ -707,10 +629,9 @@
       computeTechnicalIndicators(allBars, maPeriod, bbStdMult);
 
       const currentBar = allBars[historyBars.length - 1];
-      if (currentBar.bias20 !== null) {
+      if (!currentBar.rule && currentBar.bias20 !== null) {
         if (currentBar.bias20 >= 4.5) currentBar.rule = 'S4';
         else if (currentBar.bias20 <= -4.5) currentBar.rule = 'B4';
-        else if (Math.abs(currentBar.bias20) <= 2.2 && currentBar.close >= currentBar.ma20) currentBar.rule = 'B2';
       }
 
       return allBars.slice(Math.max(0, historyBars.length - 56)).map((bar, index) => ({ ...bar, index }));
@@ -836,6 +757,7 @@
       let ema12 = bars[0].close;
       let ema26 = bars[0].close;
       let dea = 0;
+      let previousMA = null;
 
       for (let i = 0; i < bars.length; i++) {
         const prevBar = i > 0 ? bars[i - 1] : null;
@@ -869,6 +791,16 @@
         bars[i].dea = Number(dea.toFixed(3));
         bars[i].macdHist = Number(macdHist.toFixed(3));
         bars[i].bias20 = bias20 === null ? null : Number(bias20.toFixed(2));
+        bars[i].selectedMA = bars[i].ma20;
+        bars[i].selectedBiasPct = bars[i].bias20;
+        const historical = bars[i].source === 'finmind' || bars[i].source === 'manual';
+        if (historical && previousMA !== null && i >= 2) {
+          const pullback = prevBar.close < bars[i - 2].close && prevBar.close >= previousMA && prevBar.close <= previousMA * 1.022;
+          if (ma20 > previousMA && pullback && bars[i].close > prevBar.close && bars[i].close >= ma20) {
+            bars[i].rule = 'B2';
+          }
+        }
+        previousMA = ma20;
         bars[i].autoPA = autoPA;
         if (!bars[i].paPattern && autoPA) {
           bars[i].paPattern = autoPA.name;
@@ -948,8 +880,7 @@
       }
       state.currentBarIndex = state.chartData.findIndex((bar) => bar.isCurrent);
       const hasData = state.currentBarIndex !== -1;
-      const manualForm = document.getElementById('manual-price-form');
-      manualForm.classList.toggle('hidden', !hasData);
+      document.getElementById('manual-price-details').hidden = !hasData;
       for (const button of document.querySelectorAll('[onclick="exportChartDataCSV()"], [onclick="exportStrategyJSON()"]')) {
         button.disabled = !hasData;
       }
@@ -958,11 +889,13 @@
       renderModeButtons();
       renderRuleJumpButtons();
       renderSummaryBanner();
+      renderPremarketSummary();
+      renderFilterButtons();
       renderChartDataSource();
-      renderMainChartSVG();
-      renderRightSidebar();
+      if (!state.chartData.some(bar => bar.date === state.selectedBarDate)) state.selectedBarDate = null;
       renderScenarioCards();
       renderBottomMatrix();
+      renderChartSelection();
     }
 
     function renderChartDataSource() {
@@ -973,11 +906,13 @@
       const failure = state.quoteStatus === 'not-found' ? '查無可用的 FinMind 日 K' : 'FinMind 日 K 查詢失敗';
       const badge = document.getElementById('status-badge-text');
       const source = document.getElementById('chart-data-source');
+      source.classList.remove('hidden', 'md:block');
 
       if (isDemo) {
         badge.textContent = '示範模式';
-        const demoLabel = baseCandle?.isManuallyAdjusted ? '示範資料，基準價已手動校正。' : '全圖為示範資料。';
+        const demoLabel = baseCandle?.isManuallyAdjusted ? '示範資料 · 已校正基準價' : '全圖為示範資料';
         source.textContent = baseCandle ? demoLabel : CALENDAR_UNAVAILABLE;
+        if (baseCandle && !baseCandle.isManuallyAdjusted) source.classList.add('hidden', 'md:block');
         return;
       }
 
@@ -998,7 +933,9 @@
 
       const historyLabel = cached ? '快取的 FinMind 歷史日 K' : 'FinMind 歷史日 K';
       const manualLabel = baseCandle.source === 'manual' ? '，基準價已手動校正' : '';
-      const forecastLabel = state.chartData.at(-1).isForecast
+      const hasForecast = state.chartData.at(-1).isForecast;
+      if (state.quoteStatus === 'ready' && !manualLabel && hasForecast) source.classList.add('hidden', 'md:block');
+      const forecastLabel = hasForecast
         ? '分隔線右側為未來情境模擬。'
         : getForecastUnavailableMessage();
       source.textContent = `${historyLabel}截至 ${lastDate}${manualLabel}。${forecastLabel}`;
@@ -1024,6 +961,8 @@
     }
 
     function getActiveCandle() {
+      const selected = state.chartData.find(bar => bar.date === state.selectedBarDate);
+      if (selected) return selected;
       if (state.hoveredIndex !== null && state.chartData[state.hoveredIndex]) {
         return state.chartData[state.hoveredIndex];
       }
@@ -1037,7 +976,7 @@
         .map((st) => {
           const isSelected = state.selectedStockCode === st.code;
           return `<button
-            onclick="selectStock('${st.code}')"
+            aria-pressed="${isSelected}" onclick="selectStock('${st.code}')"
             class="px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all ${
               isSelected ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-300 hover:text-white hover:bg-slate-800/70'
             }"
@@ -1049,23 +988,15 @@
     function renderRuleJumpButtons() {
       const container = document.getElementById('rule-jump-buttons');
       if (!container) return;
-      const order = ['B1', 'B2', 'B3', 'B4', 'S4', 'S1', 'S2', 'S3'];
-      container.innerHTML = order
-        .map((rKey) => {
-          const info = GRANVILLE_RULES_INFO[rKey];
-          const isBuy = info.type === 'BUY';
-          const isSelected = state.selectedRuleId === rKey;
-          const textColor = isBuy ? colors.up : colors.down;
-          const borderColor = isSelected ? '#fbbf24' : isBuy ? colors.upBorder : colors.downBorder;
-          return `<button
-            onclick="selectRule('${rKey}')"
-            style="color:${textColor}; border-color:${borderColor}"
-            class="px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all border ${
-              isSelected ? 'ring-2 ring-amber-400 bg-slate-800' : 'opacity-85 hover:opacity-100 bg-slate-900/90'
-            }"
-          >${info.shortLabel}</button>`;
-        })
-        .join('');
+      const order = ['B1', 'B2', 'B3', 'B4', 'S1', 'S2', 'S3', 'S4'];
+      container.innerHTML = order.map(ruleId => {
+        const info = GRANVILLE_RULES_INFO[ruleId];
+        const color = info.type === 'BUY' ? colors.upBorder : colors.downBorder;
+        return `<button type="button" data-rule-jump="${ruleId}" aria-pressed="false"
+          onclick="selectRule('${ruleId}')" class="chart-button text-xs font-semibold" style="color:${color}">
+          ${info.shortLabel}
+        </button>`;
+      }).join('');
     }
 
     function formatIndicator(value, digits = 2) {
@@ -1076,10 +1007,94 @@
       return Number.isFinite(value) ? `${value > 0 ? '+' : ''}${formatIndicator(value)}%` : '—';
     }
 
+    function dailyChangeColor(changePct) {
+      return changePct > 0 ? colors.up : changePct < 0 ? colors.down : '#e2e8f0';
+    }
+
+    function readPremarketRecord(csv, date, code) {
+      const [header, ...lines] = csv.replace(/^\uFEFF/, '').trimEnd().split(/\r?\n/);
+      const columns = header.split(',');
+      const column = (zh, en) => Math.max(columns.indexOf(zh), columns.indexOf(en));
+      const tradeDate = column('交易日', 'trade_date');
+      const ticker = column('股票代號', 'stock_id');
+      const close = column('預測收盤價', 'forecast_close');
+      const time = column('預測時間', 'forecast_at');
+      const direction = column('預測方向', 'forecast_direction');
+      if ([tradeDate, ticker, close, time].includes(-1)) throw new Error('Invalid premarket CSV');
+      const row = lines.map(line => line.split(',')).find(fields => fields[tradeDate] === date && fields[ticker] === code);
+      if (!row) return null;
+      const price = Number(row[close]);
+      const timestamp = /^(\d{4}-\d{2}-\d{2})[ T](0[6-8]:[0-5]\d:[0-5]\d)(?:\+08:00)?$/.exec(row[time]);
+      if (!Number.isFinite(price) || price <= 0 || timestamp?.[1] !== date) return null;
+      return { price, time: timestamp[2], direction: ['漲', '跌', '平'].includes(row[direction]) ? row[direction] : '—' };
+    }
+
+    async function loadPremarket(code) {
+      const date = todayInTaipei();
+      const request = { code, date, status: 'loading', record: null };
+      state.premarket = request;
+      renderPremarketSummary();
+
+      if (window.twseTradingCalendar?.isTradingDate(date) === false) {
+        request.status = 'closed';
+      } else if (location.protocol === 'file:') {
+        request.status = 'file';
+      } else {
+        try {
+          const response = await fetch(`data/daily-price-tracking/${date.slice(0, 7)}.csv`, {
+            cache: 'no-cache',
+            signal: AbortSignal.timeout(8000)
+          });
+          if (response.ok) {
+            request.record = readPremarketRecord(await response.text(), date, code);
+          } else if (response.status !== 404) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          request.status = 'ready';
+        } catch {
+          request.status = 'error';
+        }
+      }
+      if (state.premarket === request) renderPremarketSummary();
+    }
+
+    function renderPremarketSummary() {
+      const panel = document.getElementById('premarket-summary');
+      panel.hidden = state.chartMode === 'FULL_CYCLE';
+      if (panel.hidden) return;
+      const request = state.premarket;
+      const date = request?.date ?? todayInTaipei();
+      const dateLabel = document.getElementById('premarket-date');
+      dateLabel.dateTime = date;
+      dateLabel.textContent = date;
+      const record = request?.record;
+      const status = document.getElementById('premarket-status');
+      document.getElementById('premarket-values').hidden = !record;
+      status.hidden = Boolean(record);
+      if (record) {
+        document.getElementById('premarket-price').textContent = `$${formatIndicator(record.price)}`;
+        const direction = document.getElementById('premarket-direction');
+        direction.textContent = record.direction;
+        direction.style.color = dailyChangeColor(record.direction === '漲' ? 1 : record.direction === '跌' ? -1 : 0);
+        const time = document.getElementById('premarket-recorded');
+        time.dateTime = `${date}T${record.time}+08:00`;
+        time.textContent = `${record.time} 記錄（台灣）`;
+      } else {
+        const messages = {
+          loading: '讀取今日盤前紀錄…',
+          ready: '今日尚無盤前紀錄',
+          error: '盤前紀錄讀取失敗，請重新整理',
+          closed: '今日休市',
+          file: '透過網站或本機伺服器查看盤前紀錄'
+        };
+        status.textContent = messages[request?.status ?? 'loading'];
+      }
+    }
+
     function renderSummaryBanner() {
       const stock = getCurrentStock();
       const base = state.chartData[state.currentBarIndex];
-      const s4Bar = state.chartData.find((bar) => bar.isPresetScenario && bar.rule === 'S4');
+      document.getElementById('mobile-stock-title').textContent = `${stock.code} ${stock.name}`;
 
       document.getElementById('stock-sector-badge').textContent = stock.sector;
       document.getElementById('stock-title').textContent = `${stock.code} ${stock.name}`;
@@ -1088,12 +1103,12 @@
 
       const priceEl = document.getElementById('stock-current-price');
       priceEl.textContent = base ? `$${formatIndicator(base.close)}` : '—';
-      priceEl.style.color = base?.changePct > 0 ? colors.up : base?.changePct < 0 ? colors.down : '';
+      priceEl.style.color = dailyChangeColor(base?.changePct);
 
       document.getElementById('ma20-label-title').textContent = `生命線 MA${state.maPeriod}`;
       document.getElementById('stock-ma20-val').textContent = formatIndicator(base?.ma20);
       document.getElementById('stock-ma60-val').textContent = formatIndicator(base?.ma60);
-      document.getElementById('stock-target-val').textContent = s4Bar ? `$${formatIndicator(s4Bar.close)}` : '—';
+      document.getElementById('stock-ma60-summary').hidden = state.maPeriod === 60;
       document.getElementById('stock-summary-status').textContent = base
         ? `基準日乖離率 ${formatPercent(base.bias20)}`
         : '';
@@ -1113,30 +1128,37 @@
       // 更新圖表頂部 HUD 狀態列
       const hud = document.getElementById('chart-top-hud');
       const svgEl = document.getElementById('main-strategy-svg');
-      svgEl.classList.toggle('hidden', !activeCandle);
+      svgEl.hidden = !activeCandle;
+      const navigation = document.getElementById('chart-navigation');
+      navigation.hidden = !activeCandle;
+      if (activeCandle) {
+        navigation.querySelector('[data-day-step="-1"]').disabled = activeCandle.index === 0;
+        navigation.querySelector('[data-day-step="1"]').disabled = activeCandle.index === chartData.length - 1;
+      }
       if (!activeCandle) {
         hud.replaceChildren();
         svgEl.replaceChildren();
         return;
       }
-      const isUp = activeCandle.close >= activeCandle.open;
       const badgeStyle = activeCandle.isForecast
         ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
         : 'bg-sky-500/20 text-sky-300 border-sky-500/40';
 
       hud.innerHTML = `
         <div class="flex flex-wrap items-center gap-2.5">
-          <span data-stock-heading class="font-sans font-bold text-white text-sm"></span>
+          <span data-stock-heading class="hidden font-sans font-bold text-white text-sm md:inline"></span>
           <span class="px-2.5 py-1 rounded-md bg-amber-500/20 border border-amber-500/50 text-amber-300 font-bold flex items-center gap-1.5 shadow-sm">
-            📅 ${activeCandle.dateWithDay || activeCandle.date}
+            ${activeCandle.dateWithDay || activeCandle.date}
           </span>
           <span class="px-2 py-0.5 rounded border font-sans text-[11px] font-medium ${badgeStyle}">${getCandleSourceLabel(activeCandle)}</span>
           <span>開 <strong class="text-slate-200">${activeCandle.open.toFixed(2)}</strong></span>
           <span>高 <strong class="text-slate-200">${activeCandle.high.toFixed(2)}</strong></span>
           <span>低 <strong class="text-slate-200">${activeCandle.low.toFixed(2)}</strong></span>
-          <span>收 <strong style="color:${isUp ? colors.up : colors.down}">${activeCandle.close.toFixed(2)} (${formatPercent(activeCandle.changePct)})</strong></span>
+          <span>收 <strong style="color:${dailyChangeColor(activeCandle.changePct)}">${activeCandle.close.toFixed(2)} (${formatPercent(activeCandle.changePct)})</strong></span>
         </div>
-        <div class="flex flex-wrap items-center gap-3">
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+          ${state.selectedBarDate ? '<span class="text-amber-300">已鎖定日期</span>' : ''}
+          ${activeCandle.rule ? `<span class="font-semibold text-slate-100">${GRANVILLE_RULES_INFO[activeCandle.rule].shortLabel}</span>` : ''}
           <span style="color:${colors.ma20}">MA${state.maPeriod}: <strong>${formatIndicator(activeCandle.ma20)}</strong></span>
           ${state.maPeriod !== 60 ? `<span style="color:${colors.ma60}">MA60: <strong>${formatIndicator(activeCandle.ma60)}</strong></span>` : ''}
           ${state.filters.bollinger ? `<span class="text-blue-400">BB(${state.bbStd}σ): ${activeCandle.bbLower === null ? '—' : `${formatIndicator(activeCandle.bbLower)} ～ ${formatIndicator(activeCandle.bbUpper)}`}</span>` : ''}
@@ -1147,13 +1169,14 @@
       hud.querySelector('[data-stock-heading]').textContent = `${stock.code} (${stock.name})`;
 
       // SVG 座標尺寸計算
-      const width = 1000;
-      const mainHeight = 385;
-      const macdHeight = state.filters.macd ? 140 : 0;
+      const width = Math.max(240, svgEl.clientWidth);
+      const compact = width < 580;
+      const mainHeight = compact ? 225 : 355;
+      const macdHeight = state.filters.macd ? (compact ? 86 : 116) : 0;
       const bottomAxisHeight = 42;
       const totalHeight = mainHeight + macdHeight + bottomAxisHeight;
-      const padLeft = 24;
-      const padRight = 78;
+      const padLeft = chartPadLeft;
+      const padRight = chartPadRight;
       const padTop = 28;
       const padBottom = 20;
       const plotWidth = width - padLeft - padRight;
@@ -1198,19 +1221,18 @@
       // 不重疊 X 軸時間刻度
       const xTicks = [];
       let lastTickX = -999;
-      const stepCount = Math.max(1, Math.ceil(chartData.length / 6));
+      const stepCount = Math.max(1, Math.ceil(chartData.length / (compact ? 3 : 6)));
       for (let i = 0; i < chartData.length; i++) {
         const x = getX(i);
         const isCandidate = i % stepCount === 0 || i === currentBarIndex || i === chartData.length - 1;
-        if (isCandidate && x - lastTickX >= 135 && x <= width - padRight - 30) {
+        if (isCandidate && x - lastTickX >= (compact ? 65 : 102) && x <= width - padRight - 30 && x >= padLeft + 28) {
           xTicks.push({ index: i, date: chartData[i].date, isToday: i === currentBarIndex, x });
           lastTickX = x;
         }
       }
 
-      const todayX = getX(currentBarIndex);
+      const todayX = getX(currentBarIndex) + plotWidth / chartData.length / 2;
       const forecastWidth = Math.max(0, width - padRight - todayX);
-      const todayDateStr = chartData[currentBarIndex].date;
       const lastBar = chartData.at(-1);
       const hasForecast = lastBar.isForecast;
 
@@ -1236,10 +1258,7 @@
         <g>
           <rect x="${todayX}" y="20" width="${forecastWidth}" height="${mainHeight - 36}" fill="url(#forecastBgGrad)" />
           <line x1="${todayX}" y1="20" x2="${todayX}" y2="${totalHeight - 34}" stroke="#38bdf8" stroke-width="1.8" stroke-dasharray="5,4" />
-          <rect x="${todayX - 74}" y="22" width="148" height="20" rx="4" fill="#0f172a" stroke="#38bdf8" stroke-width="1.2" />
-          <text x="${todayX}" y="36" fill="#7dd3fc" font-size="10.5" font-weight="bold" text-anchor="middle">基準日 (${todayDateStr})</text>
-          <rect x="${todayX + 82}" y="22" width="245" height="20" rx="4" fill="#1e293b" stroke="#f59e0b" stroke-width="1" />
-          <text x="${todayX + 204}" y="36" fill="#fbbf24" font-size="10.5" font-weight="bold" text-anchor="middle">未來情境模擬 (至 ${lastBar.date}) →</text>
+          <text x="${width - padRight - 5}" y="14" fill="#fbbf24" font-size="11" font-weight="bold" text-anchor="end">未來情境模擬</text>
         </g>
       `);
 
@@ -1288,7 +1307,7 @@
       }
 
       // K 線 (Candlesticks)
-      const candleWidth = Math.max(3.8, (plotWidth / chartData.length) * 0.62);
+      const candleWidth = Math.min(plotWidth / chartData.length * 0.86, Math.max(3.8, (plotWidth / chartData.length) * 0.62));
       chartData.forEach((d, i) => {
         const x = getX(i);
         const up = d.close >= d.open;
@@ -1298,12 +1317,12 @@
         const bodyTop = getY(Math.max(d.open, d.close));
         const bodyBottom = getY(Math.min(d.open, d.close));
         const bodyH = Math.max(2.5, bodyBottom - bodyTop);
-        const isSelectedRule = d.rule && d.rule === state.selectedRuleId;
+        const isSelectedRule = d.rule && d.index === activeCandle.index;
 
-        svgParts.push(`<g onclick="${d.rule ? `selectRule('${d.rule}', ${d.index})` : ''}" class="${d.rule ? 'cursor-pointer' : ''}">`);
+        svgParts.push('<g>');
         if (state.filters.priceAction && d.rule) {
           svgParts.push(`
-            <circle cx="${x}" cy="${up ? lowY + 4 : highY - 4}" r="${isSelectedRule ? 12 : 8}"
+            <circle cx="${x}" cy="${up ? lowY + 4 : highY - 4}" r="${isSelectedRule ? 7 : 4}"
               fill="${up ? colors.upBg : colors.downBg}"
               stroke="${isSelectedRule ? '#fbbf24' : cColor}"
               stroke-width="${isSelectedRule ? '2' : '1'}" />
@@ -1317,34 +1336,38 @@
 
       // 葛蘭碧八大買賣點標籤
       if (state.filters.granville) {
-        chartData.filter((d) => d.rule).forEach((d) => {
-          const rInfo = GRANVILLE_RULES_INFO[d.rule];
-          if (!rInfo) return;
-          const isBuy = rInfo.type === 'BUY';
-          const x = getX(d.index);
-          const anchorY = isBuy ? getY(d.low) : getY(d.high);
-          const labelY = isBuy ? anchorY + 34 : anchorY - 34;
-          const badgeColor = isBuy ? colors.up : colors.down;
-          const isFocused = state.selectedRuleId === d.rule;
-          const clampedX = Math.min(width - padRight - 68, Math.max(padLeft + 68, x));
-
+        const labels = [];
+        const signals = chartData.filter(bar => GRANVILLE_RULES_INFO[bar.rule]);
+        signals.sort((a, b) => Number(b.index === activeCandle.index) - Number(a.index === activeCandle.index));
+        for (const bar of signals) {
+          const isBuy = GRANVILLE_RULES_INFO[bar.rule].type === 'BUY';
+          const x = getX(bar.index);
+          const anchorY = getY(isBuy ? bar.low : bar.high);
+          const offset = isBuy ? 1 : -1;
+          const labelX = Math.min(width - padRight - 15, Math.max(padLeft + 15, x));
+          const color = bar.index === activeCandle.index ? '#fbbf24' : isBuy ? colors.upBorder : colors.downBorder;
+          const labelY = [17, 37, 57].map(distance => anchorY + offset * distance).find(y =>
+            y >= 32 && y <= mainHeight - 12 &&
+            !labels.some(label => Math.abs(label.x - labelX) < 32 && Math.abs(label.y - y) < 18)
+          );
+          if (labelY === undefined) {
+            svgParts.push(`<circle data-bar-index="${bar.index}" cx="${x}" cy="${anchorY}" r="4" fill="${color}" class="cursor-pointer" />`);
+            continue;
+          }
+          labels.push({ x: labelX, y: labelY });
           svgParts.push(`
-            <g onclick="selectRule('${d.rule}', ${d.index})" class="cursor-pointer">
-              <line x1="${x}" y1="${isBuy ? anchorY + 4 : anchorY - 4}" x2="${clampedX}" y2="${isBuy ? labelY - 12 : labelY + 12}"
-                stroke="${isFocused ? '#fbbf24' : badgeColor}" stroke-width="${isFocused ? '2.2' : '1.5'}" />
-              <rect x="${clampedX - 66}" y="${labelY - 13}" width="132" height="26" rx="6" fill="#0f172a"
-                stroke="${isFocused ? '#fbbf24' : badgeColor}" stroke-width="${isFocused ? '2' : '1.3'}" />
-              <text x="${clampedX}" y="${labelY + 4}" fill="${isFocused ? '#fde68a' : '#f8fafc'}" font-size="10.5" font-weight="bold" text-anchor="middle">
-                ${d.isPresetScenario ? `預設情境點 ${d.rule}` : rInfo.shortLabel} @${d.close.toFixed(1)}
-              </text>
+            <g data-bar-index="${bar.index}" class="cursor-pointer">
+              <line x1="${x}" y1="${anchorY}" x2="${labelX}" y2="${labelY}" stroke="${color}" />
+              <rect x="${labelX - 14}" y="${labelY - 8}" width="28" height="16" rx="4" fill="#0f172a" stroke="${color}" />
+              <text x="${labelX}" y="${labelY + 4}" fill="#f8fafc" font-size="11" font-family="monospace" text-anchor="middle">${bar.rule}</text>
             </g>
           `);
-        });
+        }
       }
 
       // 下方 MACD 面板
       if (state.filters.macd) {
-        const barW = Math.max(3, (plotWidth / chartData.length) * 0.55);
+        const barW = (plotWidth / chartData.length) * 0.6;
         const macdBarsHtml = chartData
           .map((d, i) => {
             const x = getX(i);
@@ -1361,7 +1384,7 @@
           <g>
             <line x1="${padLeft}" y1="${mainHeight}" x2="${width - padRight}" y2="${mainHeight}" stroke="#334155" stroke-width="1.5" />
             <text x="${padLeft + 6}" y="${macdTop - 4}" fill="#cbd5e1" font-size="10.5" font-weight="bold">
-              MACD (12,26,9) 動能真偽與背離濾網 — DIF: ${activeCandle.dif} / DEA: ${activeCandle.dea} / 柱狀體: ${activeCandle.macdHist}
+              MACD (12,26,9) · DIF ${activeCandle.dif} / DEA ${activeCandle.dea}
             </text>
             <line x1="${padLeft}" y1="${macdZeroY}" x2="${width - padRight}" y2="${macdZeroY}" stroke="#475569" stroke-width="1" stroke-dasharray="3,3" />
             <text x="${width - padRight + 8}" y="${macdZeroY + 4}" fill="#94a3b8" font-size="10" font-family="monospace">0.00</text>
@@ -1375,8 +1398,10 @@
       // 底部不重疊 X 軸時間刻度
       svgParts.push(`<line x1="${padLeft}" y1="${totalHeight - 34}" x2="${width - padRight}" y2="${totalHeight - 34}" stroke="#334155" stroke-width="1" />`);
       const activeX = getX(activeCandle.index);
+      const pillWidth = compact ? 104 : 136;
+      const clampedPillX = Math.min(width - padRight - pillWidth / 2, Math.max(padLeft + pillWidth / 2, activeX));
       xTicks.forEach((tick) => {
-        if (Math.abs(tick.x - activeX) < 90) return;
+        if (Math.abs(tick.x - clampedPillX) < (compact ? 65 : 107)) return;
         svgParts.push(`
           <g>
             <line x1="${tick.x}" y1="${totalHeight - 34}" x2="${tick.x}" y2="${totalHeight - 28}" stroke="${tick.isToday ? '#38bdf8' : '#64748b'}" stroke-width="${tick.isToday ? '1.8' : '1'}" />
@@ -1386,15 +1411,13 @@
       });
 
       // 互動十字線 + 底部黃金膠囊日期 YYYY/MM/DD (週X)
-      const pillWidth = 156;
-      const clampedPillX = Math.min(width - padRight - pillWidth / 2, Math.max(padLeft + pillWidth / 2, activeX));
       const activePriceY = getY(activeCandle.close);
       svgParts.push(`
         <g pointer-events="none">
           <line x1="${activeX}" y1="20" x2="${activeX}" y2="${totalHeight - 34}" stroke="#fbbf24" stroke-width="1.2" stroke-dasharray="3,3" />
           <line x1="${padLeft}" y1="${activePriceY}" x2="${width - padRight}" y2="${activePriceY}" stroke="#fbbf24" stroke-width="1.2" stroke-dasharray="3,3" />
-          <rect x="${width - padRight + 2}" y="${activePriceY - 10}" width="68" height="20" rx="4" fill="#f59e0b" />
-          <text x="${width - padRight + 36}" y="${activePriceY + 4}" fill="#0f172a" font-size="11" font-weight="bold" font-family="monospace" text-anchor="middle">${activeCandle.close.toFixed(2)}</text>
+          <rect x="${width - padRight + 2}" y="${activePriceY - 10}" width="64" height="20" rx="4" fill="#f59e0b" />
+          <text x="${width - padRight + 34}" y="${activePriceY + 4}" fill="#0f172a" font-size="11" font-weight="bold" font-family="monospace" text-anchor="middle">${activeCandle.close.toFixed(2)}</text>
 
           <rect x="${clampedPillX - pillWidth / 2 - 4}" y="${totalHeight - 32}" width="${pillWidth + 8}" height="28" rx="6" fill="#0f172a" />
           <rect x="${clampedPillX - pillWidth / 2}" y="${totalHeight - 29}" width="${pillWidth}" height="22" rx="5" fill="#f59e0b" stroke="#fef08a" stroke-width="1.2" />
@@ -1479,7 +1502,7 @@
         .map(({ step, item }) => {
           const icon = item.status === 'PASS' ? '<span class="text-emerald-400 font-bold">✔</span>' : item.status === 'WARN' ? '<span class="text-amber-400 font-bold">⚠</span>' : item.status === 'FAIL' ? '<span class="text-rose-400 font-bold">✖</span>' : '<span class="text-slate-400">—</span>';
           return `
-            <div class="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800/90 flex items-start gap-2.5">
+            <div class="flex items-start gap-2.5 py-2.5">
               <div class="mt-0.5 text-sm">${icon}</div>
               <div class="text-xs">
                 <div class="text-[11px] text-slate-400 font-medium">${step}</div>
@@ -1493,39 +1516,30 @@
     }
 
     function renderScenarioCards() {
-      const base = state.chartData[state.currentBarIndex];
-      const future = state.chartData.filter((bar) => bar.isForecast);
+      const future = state.chartData.filter(bar => bar.isForecast);
       const container = document.getElementById('scenario-cards-container');
       const title = document.getElementById('scenario-box-title');
-      title.textContent = '未來情境模擬';
-      if (!base || !future.length) {
+      const demo = state.chartMode === 'FULL_CYCLE';
+      title.textContent = demo ? '示範情境點' : '未來情境模擬';
+      if (!future.length) {
         container.textContent = getForecastUnavailableMessage();
         return;
       }
 
-      title.textContent = `未來情境模擬（${future[0].date} ～ ${future.at(-1).date}）`;
-      const b2 = future.find((bar) => bar.isPresetScenario && bar.rule === 'B2');
-      const s4 = future.find((bar) => bar.isPresetScenario && bar.rule === 'S4');
-      container.innerHTML = [base, b2, s4].filter(Boolean).map((bar) => {
-        const label = bar.isPresetScenario ? `預設情境點 ${bar.rule}` : '基準日';
-        const action = bar.isForecast
-          ? `selectRule('${bar.rule}', ${bar.index})`
-          : `focusBarIndex(${bar.index})`;
-        return `
-          <button type="button" onclick="${action}" class="w-full p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 hover:border-amber-500/60 text-left">
-            <span class="flex flex-wrap justify-between gap-2 text-xs text-slate-200">
-              <span>${label}（${bar.date}）</span>
-              <span class="font-mono text-amber-300">$${formatIndicator(bar.close)}</span>
-            </span>
-          </button>
-        `;
-      }).join('');
-      if (!b2 && !s4) {
-        const note = document.createElement('p');
-        note.className = 'text-slate-400';
-        note.textContent = '這段模擬期間沒有 B2 或 S4 點位。';
-        container.append(note);
-      }
+      const points = future.filter(bar => bar.rule && (demo || bar.isPresetScenario));
+      const period = document.createElement('p');
+      period.className = 'text-slate-400';
+      period.textContent = `${future[0].date} ～ ${future.at(-1).date}`;
+      container.innerHTML = points.map(bar => `
+        <button type="button" data-select-bar="${bar.index}" aria-pressed="false" onclick="focusBarIndex(${bar.index}, true)"
+          class="flex min-h-11 w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-700 px-3 py-1.5 text-left hover:border-amber-400">
+          <span><span class="font-semibold text-slate-100">${GRANVILLE_RULES_INFO[bar.rule].shortLabel}</span>
+          <span class="block font-mono text-slate-400">${bar.date}</span></span>
+          <strong class="font-mono text-amber-300">$${formatIndicator(bar.close)}</strong>
+        </button>`
+      ).join('');
+      if (!points.length) container.textContent = '這段期間沒有情境點';
+      container.prepend(period);
     }
 
     function renderBottomMatrix() {
@@ -1534,12 +1548,9 @@
       grid.innerHTML = Object.values(GRANVILLE_RULES_INFO)
         .map((rule) => {
           const isBuy = rule.type === 'BUY';
-          const isSelected = state.selectedRuleId === rule.id;
           return `
-            <button onclick="selectRule('${rule.id}')"
-              class="text-left p-3 rounded-xl border transition-all flex flex-col justify-between ${
-                isSelected ? 'bg-slate-800/90 border-amber-400 ring-1 ring-amber-400' : 'bg-slate-900/70 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
-              }">
+            <button type="button" data-rule-jump="${rule.id}" aria-pressed="false" onclick="selectRule('${rule.id}')"
+              class="flex flex-col justify-between rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-left hover:border-slate-600">
               <div>
                 <div class="flex items-center justify-between mb-1.5">
                   <span class="text-xs font-mono font-bold px-2 py-0.5 rounded" style="background-color:${isBuy ? colors.upBg : colors.downBg}; color:${isBuy ? colors.up : colors.down}">
@@ -1572,48 +1583,62 @@
       }, 3200);
     }
 
+    function setStockControls(open) {
+      document.getElementById('stock-controls').dataset.open = String(open);
+      document.getElementById('stock-controls-toggle').setAttribute('aria-expanded', String(open));
+    }
+
     function selectStock(code, name) {
       if (name) state.stockNames[code] = name;
       state.selectedStockCode = code;
       state.chartMode = 'RECENT_FORECAST';
+      state.selectedBarDate = null;
       state.hoveredIndex = null;
+      const toggle = document.getElementById('stock-controls-toggle');
+      if (toggle.offsetWidth && document.getElementById('stock-controls').contains(document.activeElement)) toggle.focus();
+      setStockControls(false);
       setRuleStatus('');
+      loadPremarket(code);
       fetchRealTaiwanStockData(code);
     }
 
     function renderModeButtons() {
-      const activeClass = 'bg-amber-500 text-slate-950 shadow';
-      const inactiveClass = 'text-slate-400 hover:text-white';
+      const activeClass = 'bg-amber-500 text-slate-950';
+      const inactiveClass = 'text-slate-300 hover:text-white';
       for (const [id, mode] of [['mode-btn-forecast', 'RECENT_FORECAST'], ['mode-btn-fullcycle', 'FULL_CYCLE']]) {
         const button = document.getElementById(id);
         const active = state.chartMode === mode;
-        button.className = `px-3 py-1 rounded text-xs font-semibold transition-all ${active ? activeClass : inactiveClass}`;
+        button.className = `min-h-8 px-3 rounded text-sm font-semibold ${active ? activeClass : inactiveClass}`;
         button.setAttribute('aria-pressed', String(active));
       }
     }
 
     function setChartMode(mode) {
+      if (state.chartMode === mode) return;
       state.chartMode = mode;
+      if (mode === 'RECENT_FORECAST' && state.premarket?.date !== todayInTaipei()) loadPremarket(state.selectedStockCode);
+      state.selectedBarDate = null;
       state.hoveredIndex = null;
       setRuleStatus('');
       rebuildAndRenderAll();
     }
 
+    function renderFilterButtons() {
+      const layers = { granville: 'granville', bollinger: 'bollinger', macd: 'macd', priceAction: 'pa' };
+      for (const [key, id] of Object.entries(layers)) {
+        const button = document.getElementById(`filter-btn-${id}`);
+        button.setAttribute('aria-pressed', String(state.filters[key]));
+        button.className = `chart-button ${state.filters[key] ? 'bg-slate-800 font-semibold' : 'text-slate-400'}`;
+      }
+      const showSeasonLine = state.filters.showMA60 && (state.maPeriod !== 60 || !state.filters.granville);
+      document.querySelector('[data-legend="granville"]').hidden = !state.filters.granville;
+      document.querySelector('[data-legend="ma60"]').hidden = !showSeasonLine;
+      document.querySelector('[data-legend="bollinger"]').hidden = !state.filters.bollinger;
+    }
+
     function toggleFilter(key) {
       state.filters[key] = !state.filters[key];
-      const btnMap = {
-        granville: { id: 'filter-btn-granville', activeClass: 'bg-amber-500/20 border-amber-500/60 text-amber-300' },
-        bollinger: { id: 'filter-btn-bollinger', activeClass: 'bg-blue-500/20 border-blue-500/60 text-blue-300' },
-        macd: { id: 'filter-btn-macd', activeClass: 'bg-purple-500/20 border-purple-500/60 text-purple-300' },
-        priceAction: { id: 'filter-btn-pa', activeClass: 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300' }
-      };
-      const cfg = btnMap[key];
-      if (cfg) {
-        const el = document.getElementById(cfg.id);
-        el.className = `px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
-          state.filters[key] ? cfg.activeClass : 'bg-slate-900 border-slate-800 text-slate-500'
-        }`;
-      }
+      renderFilterButtons();
       renderMainChartSVG();
     }
 
@@ -1623,29 +1648,56 @@
       status.textContent = message;
     }
 
+    function renderChartSelection() {
+      const selected = state.chartData.find(bar => bar.date === state.selectedBarDate);
+      for (const el of document.querySelectorAll('[data-select-bar]')) {
+        el.setAttribute('aria-pressed', String(selected?.index === Number(el.dataset.selectBar)));
+      }
+      for (const el of document.querySelectorAll('[data-rule-jump]')) {
+        el.setAttribute('aria-pressed', String(selected?.rule === el.dataset.ruleJump));
+      }
+      const active = getActiveCandle();
+      document.getElementById('chart-selection-status').textContent = active
+        ? `${selected ? '已選取' : '基準日'} ${active.dateWithDay}，收盤 ${formatIndicator(active.close)}`
+        : '';
+      renderMainChartSVG();
+      renderRightSidebar();
+    }
+
     function selectRule(ruleId, barIndex) {
       const targetBar = barIndex === undefined
-        ? state.chartData.find((bar) => bar.rule === ruleId)
+        ? state.chartData.find(bar => bar.rule === ruleId)
         : state.chartData[barIndex];
       if (targetBar?.rule !== ruleId) {
         setRuleStatus(`此圖沒有 ${ruleId} 訊號。`);
         return;
       }
-      setRuleStatus('');
-      state.selectedRuleId = ruleId;
-      state.hoveredIndex = targetBar.index;
-      renderRuleJumpButtons();
-      renderMainChartSVG();
-      renderRightSidebar();
-      renderBottomMatrix();
+      focusBarIndex(targetBar.index, true);
     }
 
-    function focusBarIndex(idx) {
-      if (!state.chartData[idx]) return;
+    function focusBarIndex(idx, jump = false) {
+      const bar = state.chartData[idx];
+      if (!bar) return;
       setRuleStatus('');
-      state.hoveredIndex = idx;
-      renderMainChartSVG();
-      renderRightSidebar();
+      state.selectedBarDate = bar.date;
+      state.hoveredIndex = null;
+      renderChartSelection();
+      if (jump) {
+        document.getElementById('chart-top-hud').scrollIntoView({ block: 'nearest' });
+        document.getElementById('main-strategy-svg').focus({ preventScroll: true });
+      }
+    }
+
+    function moveChartSelection(step) {
+      const candle = getActiveCandle();
+      if (candle) focusBarIndex(Math.min(state.chartData.length - 1, Math.max(0, candle.index + step)));
+    }
+
+    function resetChartSelection() {
+      setRuleStatus('');
+      state.selectedBarDate = null;
+      state.hoveredIndex = null;
+      renderChartSelection();
     }
 
     function updateIndicatorParams() {
@@ -1710,6 +1762,7 @@
           peakPrice: Math.max(...history.map((bar) => bar.high)),
           dipPrice: Math.min(...history.map((bar) => bar.low)),
           currentPrice: base.close,
+          selectedMACurrent: base.selectedMA,
           ma20Current: base.ma20,
           ma60Current: base.ma60
         },
@@ -1732,23 +1785,49 @@
     // 8. 事件綁定與初始化啟動
     // ==========================================
     window.addEventListener('DOMContentLoaded', () => {
-      // 綁定 SVG 滑鼠十字線查價事件
       const svgEl = document.getElementById('main-strategy-svg');
-      svgEl.addEventListener('mousemove', (e) => {
-        const rect = svgEl.getBoundingClientRect();
-        const relX = ((e.clientX - rect.left) / rect.width) * 1000;
-        const plotWidth = 1000 - 24 - 78;
-        const idx = Math.floor(((relX - 24) / plotWidth) * state.chartData.length);
-        if (idx >= 0 && idx < state.chartData.length && state.hoveredIndex !== idx) {
-          state.hoveredIndex = idx;
+      function barIndexAtPointer(event) {
+        const marker = event.target.closest('[data-bar-index]');
+        if (marker) return Number(marker.dataset.barIndex);
+        const bounds = svgEl.getBoundingClientRect();
+        const width = svgEl.viewBox.baseVal.width;
+        const x = (event.clientX - bounds.left) * width / bounds.width;
+        return Math.floor((x - chartPadLeft) / (width - chartPadLeft - chartPadRight) * state.chartData.length);
+      }
+      svgEl.addEventListener('pointermove', event => {
+        if (event.pointerType !== 'mouse' || state.selectedBarDate) return;
+        const bar = state.chartData[barIndexAtPointer(event)];
+        if (bar && state.hoveredIndex !== bar.index) {
+          state.hoveredIndex = bar.index;
           renderMainChartSVG();
           renderRightSidebar();
         }
       });
-      svgEl.addEventListener('mouseleave', () => {
+      svgEl.addEventListener('pointerleave', () => {
+        if (state.hoveredIndex === null) return;
         state.hoveredIndex = null;
         renderMainChartSVG();
         renderRightSidebar();
+      });
+      svgEl.addEventListener('click', event => focusBarIndex(barIndexAtPointer(event)));
+      svgEl.addEventListener('keydown', event => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'Escape'].includes(event.key)) return;
+        event.preventDefault();
+        if (event.key === 'Home' || event.key === 'Escape') resetChartSelection();
+        else moveChartSelection(event.key === 'ArrowLeft' ? -1 : 1);
+      });
+      let chartWidth = 0;
+      new ResizeObserver(([entry]) => {
+        const width = entry.contentRect.width;
+        if (width === chartWidth) return;
+        chartWidth = width;
+        if (width) renderMainChartSVG();
+      }).observe(svgEl.parentElement);
+
+      const stockToggle = document.getElementById('stock-controls-toggle');
+      stockToggle.addEventListener('click', () => setStockControls(stockToggle.getAttribute('aria-expanded') !== 'true'));
+      window.addEventListener('focus', () => {
+        if (state.chartMode === 'RECENT_FORECAST') loadPremarket(state.selectedStockCode);
       });
 
       // 綁定台股搜尋表單
@@ -1781,6 +1860,8 @@
         state.hoveredIndex = null;
         setRuleStatus('');
         rebuildAndRenderAll();
+        document.getElementById('manual-price-details').open = false;
+        document.querySelector('#manual-price-details summary').focus();
         showToast(`基準價已校正為 $${formatIndicator(price)}。`);
       });
 

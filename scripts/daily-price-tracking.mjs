@@ -1,12 +1,12 @@
 import { appendFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import model from '../forecast-model.js';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import parameters from './daily-model-parameters.json' with { type: 'json' };
+import { directions, features, predictDaily } from './daily-model.mjs';
 import { MonthlyRecords } from './price-tracking-records.mjs';
 import {
-  finMindPrices, historicalTWSEClose, isTradingDate, latestTWSEPrices, previousTradingDate, shiftDate
+  finMindPrices, historicalTWSEClose, isTradingDate, latestTWSEPrices, previousTradingDate, shiftDate, symbols
 } from './price-tracking-market.mjs';
 
-const symbols = ['2312', '2317', '2330', '2603', '3231', '3481'];
 const recordsDirectory = fileURLToPath(new URL('../data/daily-price-tracking', import.meta.url));
 const timeZone = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -22,20 +22,23 @@ function taipeiClock() {
   };
 }
 
-function validDate(date) {
+export function validDate(date) {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(date)) && shiftDate(date, 0) === date;
 }
 
 async function forecastFor(stock, previous) {
   const series = await finMindPrices(stock, shiftDate(previous, -120), previous);
   const dates = [...series.keys()].sort();
-  if (dates.length < model.defaultMAPeriod || dates.at(-1) !== previous) {
-    throw new Error(`needs ${model.defaultMAPeriod} FinMind records through ${previous}`);
+  if (dates.length < 21 || dates.at(-1) !== previous) {
+    throw new Error(`needs 21 FinMind records through ${previous}`);
   }
   const closes = dates.map((date) => Number(series.get(date).toFixed(2)));
+  const previousClose = closes.at(-1);
+  const model = { ...parameters.models[stock], priceMethod: parameters.priceMethod, directionMethod: parameters.directionMethod };
+  const prediction = predictDaily(model, features(closes), previousClose);
   return {
-    forecast_close: model.forecastClosePath(closes, 1)[0].toFixed(2),
-    model_version: model.version
+    forecast_close: prediction.close.toFixed(2), previous_close: previousClose.toFixed(2),
+    forecast_direction: prediction.direction, model_version: parameters.version
   };
 }
 
@@ -91,7 +94,7 @@ async function officialCloses(date, targets, preferLatest, allowFinMind) {
   return results;
 }
 
-async function runForecast(records, date, started) {
+export async function runForecast(records, date, started, collect = collectForecasts, clock = taipeiClock) {
   const targets = [];
   for (const stock of symbols) {
     if (!(await records.get(date, stock))?.forecast_close) targets.push(stock);
@@ -103,8 +106,8 @@ async function runForecast(records, date, started) {
   if (started.hour < 6 || started.hour >= 9) {
     throw new Error(`${date}: ${targets.length} forecasts missing; job started at ${started.timestamp}, outside the 06:00–09:00 Taiwan pre-market window`);
   }
-  const forecasts = await collectForecasts(date, targets);
-  const recorded = taipeiClock();
+  const forecasts = await collect(date, targets);
+  const recorded = clock();
   if (recorded.date !== date || recorded.hour >= 9) {
     throw new Error(`${date}: forecast calculation finished after the pre-market window`);
   }
@@ -112,65 +115,114 @@ async function runForecast(records, date, started) {
   for (const [stock, values] of forecasts) {
     await records.update(date, stock, { ...values, forecast_at: recorded.timestamp });
   }
-  console.log(`${date}: recorded ${forecasts.length} new forecasts`);
+  const completed = new Set(forecasts.map(([stock]) => stock));
+  const missing = targets.filter(stock => !completed.has(stock));
+  await summary(`${date} 新增 ${forecasts.length} 筆盤前預測。${missing.length ? '行情或計算缺漏：' + missing.join('、') : ''}`);
+}
+
+async function summary(report) {
+  console.log(report);
+  if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, report + '\n');
+}
+
+export function onTimeForecast(row, date) {
+  if (!row || !(Number.isFinite(+row.forecast_close) && +row.forecast_close > 0)) return false;
+  const [day, time] = (row.forecast_at || '').split(' ');
+  if (day !== date || !/^0[6-8]:[0-5]\d:[0-5]\d$/.test(time)) return false;
+  if (!row.model_version?.startsWith('daily-v2-')) return true;
+  return Number.isFinite(+row.previous_close) && +row.previous_close > 0 && directions.includes(row.forecast_direction);
 }
 
 async function auditForecasts(date, now) {
-  let summary;
+  let message;
   let failure;
   if (!await isTradingDate(date)) {
-    summary = '休市日，跳過檢查。';
+    message = '休市日，跳過檢查。';
   } else if (date === now.date && now.hour < 9) {
-    summary = '盤前預測仍可寫入，請於台灣時間 09:00 後檢查當日紀錄。';
-    failure = summary;
+    message = '盤前預測仍可寫入，請於台灣時間 09:00 後檢查當日紀錄。';
+    failure = message;
   } else {
     const records = new MonthlyRecords(recordsDirectory);
     const missing = [];
     for (const stock of symbols) {
       const row = await records.get(date, stock);
-      const [forecastDate, forecastTime] = (row?.forecast_at || '').split(' ');
-      const price = Number(row?.forecast_close);
-      if (!Number.isFinite(price) || price <= 0 || forecastDate !== date || !/^0[6-8]:[0-5]\d:[0-5]\d$/.test(forecastTime)) {
+      if (!onTimeForecast(row, date)) {
         missing.push(stock);
       }
     }
-    summary = `已完成 ${symbols.length - missing.length}/${symbols.length} 檔。`;
+    message = `已完成 ${symbols.length - missing.length}/${symbols.length} 檔。`;
     if (missing.length) {
       failure = `缺漏股票代號：${missing.join('、')}。`;
-      summary = `${summary}\n\n${failure}`;
+      message = `${message}\n\n${failure}`;
     }
   }
 
-  const report = `## ${date} 盤前預測檢查\n\n${summary}\n`;
-  console.log(report);
-  if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, report);
+  await summary(`## ${date} 盤前預測檢查\n\n${message}\n`);
   if (failure) throw new Error(failure);
 }
 
-async function runClose(records, date, today, allowFinMind, pendingOnly = false) {
+function hasClose(row) {
+  const price = Number(row?.actual_close);
+  return Number.isFinite(price) && price > 0;
+}
+
+export async function runClose(records, date, today, allowFinMind, pendingOnly = false, collect = officialCloses) {
   const missing = [];
   for (const stock of symbols) {
     const row = await records.get(date, stock);
-    if (row?.actual_close || (pendingOnly && !row)) continue;
+    if (hasClose(row) || (pendingOnly && !row)) continue;
     missing.push(stock);
     await records.update(date, stock, {});
   }
-  const results = await officialCloses(date, missing, date === today, allowFinMind);
+  const results = await collect(date, missing, date === today, allowFinMind);
   for (const [stock, values] of results) await records.update(date, stock, values);
   if (missing.length) console.log(`${date}: recorded ${results.length} closes, ${missing.length - results.length} pending`);
   return results.length;
 }
 
-async function main(mode, requestedDate) {
-  if (!['forecast', 'close', 'retry', 'verify', 'audit'].includes(mode)) throw new Error('Use forecast, close, retry, verify or audit');
+export async function retryDates(date, includeBacklog) {
+  const dates = [];
+  if (await isTradingDate(date)) dates.push({ date, pendingOnly: false });
+  if (includeBacklog) {
+    for (let days = 1; days <= 7; days++) dates.push({ date: shiftDate(date, -days), pendingOnly: true });
+  }
+  return dates;
+}
+
+export async function checkCloses(records, dates) {
+  const missing = [];
+  for (const { date, pendingOnly } of dates) {
+    for (const stock of symbols) {
+      const row = await records.get(date, stock);
+      if ((!pendingOnly || row) && !hasClose(row)) {
+        missing.push(date + ' ' + stock);
+      }
+    }
+  }
+  await summary(missing.length ? '收盤價待補：\n\n' + missing.map(key => '- ' + key).join('\n') : '收盤價檢查完成，無待補紀錄。');
+  if (missing.length) throw new Error(`尚缺 ${missing.length} 筆收盤價`);
+}
+
+// 排程延遲跨午夜時，收盤任務仍屬於最近一次已到期的台灣晚間排程。
+export function closeScheduleDate(now, schedule) {
+  const slot = { '0 17 * * *': '17:00', '45 17 * * *': '17:45' }[schedule];
+  return slot && now.timestamp.slice(11, 16) < slot ? shiftDate(now.date, -1) : now.date;
+}
+
+async function main(mode, requestedDate, option) {
+  if (!['forecast', 'close', 'retry', 'verify', 'audit', 'check-close'].includes(mode)) throw new Error('Use forecast, close, retry, check-close, verify or audit');
   const now = taipeiClock();
-  const date = requestedDate || (mode === 'verify' ? await previousTradingDate(now.date) : now.date);
+  const scheduledDate = closeScheduleDate(now, process.env.ACTION_SCHEDULE);
+  const date = requestedDate || (mode === 'verify' ? await previousTradingDate(now.date) : scheduledDate);
   if (!validDate(date) || date > now.date) throw new Error(`Invalid trading date: ${date}`);
   if (mode === 'audit') return auditForecasts(date, now);
+  if (mode === 'check-close') return checkCloses(new MonthlyRecords(recordsDirectory), await retryDates(date, !requestedDate || option === '--backlog'));
+  if (mode === 'forecast') await summary(`盤前工作實際啟動時間（台灣）：${now.timestamp}`);
   if (mode === 'forecast' && date !== now.date) {
     throw new Error('Forecasts can only be recorded on their target trading date');
   }
   if (mode !== 'forecast' && date === now.date && now.hour < 17) {
+    if (mode === 'retry') throw new Error('當日收盤補抓於台灣時間 17:00 後開放');
     console.warn('Today’s closing prices are collected from 17:00 Taiwan time');
     return;
   }
@@ -196,17 +248,21 @@ async function main(mode, requestedDate) {
   } else if (mode === 'close') {
     await runClose(records, date, now.date, date < now.date);
   } else {
-    if (isOpen) await runClose(records, date, now.date, true);
-    if (!requestedDate) {
-      for (let days = 1; days <= 7; days++) {
-        await runClose(records, shiftDate(date, -days), now.date, true, true);
-      }
+    const dates = await retryDates(date, !requestedDate);
+    for (const target of dates) await runClose(records, target.date, now.date, true, target.pendingOnly);
+    await records.save();
+    if (option === '--defer-check' && process.env.GITHUB_OUTPUT) {
+      await appendFile(process.env.GITHUB_OUTPUT, `retry_date=${date}\nretry_scope=${requestedDate ? '' : '--backlog'}\n`);
+      return;
     }
+    return checkCloses(records, dates);
   }
   await records.save();
 }
 
-await main(process.argv[2], process.argv[3]).catch((error) => {
-  console.error(error.message);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await main(...process.argv.slice(2)).catch(async error => {
+    await summary(error.message);
+    process.exitCode = 1;
+  });
+}
