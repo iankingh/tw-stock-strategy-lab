@@ -1,6 +1,9 @@
 name: 台股每日股價紀錄
 
 on:
+  push:
+    branches: [main]
+    paths: [scripts/taiex.mjs]
   schedule:
     - cron: '0 7 * * *'
       timezone: Asia/Taipei
@@ -33,6 +36,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: write
+      pages: write
     concurrency:
       group: daily-price-tracking
       cancel-in-progress: false
@@ -45,7 +49,13 @@ jobs:
         with:
           node-version: '24'
           package-manager-cache: false
+      - name: 設定大盤首個盤前追蹤交易日
+        if: inputs.mode != 'verify'
+        env:
+          ACTION_SCHEDULE: ${{ github.event.schedule }}
+        run: node scripts/daily-price-tracking.mjs activate-index
       - name: 取得並記錄價格
+        if: github.event_name != 'push'
         id: collect
         env:
           ACTION_SCHEDULE: ${{ github.event.schedule }}
@@ -60,11 +70,13 @@ jobs:
             *) echo "Unrecognized schedule: $ACTION_SCHEDULE"; exit 1 ;;
           esac
           node scripts/daily-price-tracking.mjs "$mode" "$TRADE_DATE" --defer-check
-      - name: 儲存更新的每月 CSV
-        if: github.event_name != 'workflow_dispatch' || inputs.mode != 'verify'
+      - name: 儲存更新的行情與每月 CSV
+        id: persist
+        if: ${{ !cancelled() && inputs.mode != 'verify' }}
         run: |
           if [ ! -d data/daily-price-tracking ]; then exit 0; fi
-          git add -- data/daily-price-tracking
+          git add -- data/daily-price-tracking data/taiex.js
+          if [ -f data/taiex-start.txt ]; then git add -- data/taiex-start.txt; fi
           if git diff --cached --quiet; then exit 0; fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -73,8 +85,14 @@ jobs:
             git pull --rebase origin main
             git push origin HEAD:main
           fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+      - name: 發布最新行情到 GitHub Pages
+        if: ${{ !cancelled() && steps.persist.outputs.changed == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method POST "repos/$GITHUB_REPOSITORY/pages/builds" --jq .status
       - name: 檢查補抓後的收盤價
-        if: steps.collect.outputs.retry_date != ''
+        if: ${{ !cancelled() && steps.collect.outputs.retry_date != '' }}
         env:
           RETRY_DATE: ${{ steps.collect.outputs.retry_date }}
           RETRY_SCOPE: ${{ steps.collect.outputs.retry_scope }}

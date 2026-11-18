@@ -74,9 +74,11 @@
   <header class="border-b border-slate-800/80 bg-[#0f131c] px-3 py-2 md:px-6 md:py-3">
     <div class="max-w-[1440px] mx-auto flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
       <h1 class="hidden md:block text-lg font-bold tracking-tight text-white">台股複合交易策略工作站</h1>
-      <h1 id="mobile-stock-title" class="min-w-0 flex-1 truncate text-base font-bold md:hidden">3481 群創</h1>
+      <h1 id="mobile-stock-title" class="min-w-0 flex-1 truncate text-base font-bold md:hidden">台灣加權指數（TAIEX）</h1>
+      <button type="button" id="mobile-market-home" onclick="selectStock('TAIEX')" hidden
+        class="chart-button md:hidden text-sm">回大盤</button>
       <button id="stock-controls-toggle" type="button" aria-expanded="false" aria-controls="stock-controls"
-        class="md:hidden min-h-11 rounded-lg border border-slate-700 px-4 text-sm font-semibold text-amber-300">換股</button>
+        class="md:hidden min-h-11 rounded-lg border border-slate-700 px-4 text-sm font-semibold text-amber-300">選標的</button>
       <span id="status-badge-text" role="status" class="order-3 w-full text-xs text-slate-300 md:order-none md:w-auto">準備載入日 K</span>
       <div id="stock-controls" data-open="false" class="order-4 w-full flex flex-wrap items-center gap-2 py-2 md:order-none md:w-auto md:py-0">
         <div id="preset-buttons-container" class="flex flex-wrap items-center gap-1"></div>
@@ -102,7 +104,7 @@
         <div>
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
-              <h2 id="stock-title" class="hidden truncate text-lg font-bold md:block">3481 群創</h2>
+              <h2 id="stock-title" class="hidden truncate text-lg font-bold md:block">台灣加權指數（TAIEX）</h2>
               <span id="stock-en-name" class="hidden text-xs text-slate-400 md:inline"></span>
               <span id="stock-sector-badge" class="hidden text-xs text-slate-400 md:inline"></span>
               <div id="stock-summary-status" class="text-xs font-medium text-slate-300"></div>
@@ -151,7 +153,7 @@
     <div class="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-12">
         <section class="min-w-0 rounded-xl border border-slate-800 bg-[#131722] p-3 md:p-4 xl:col-span-8" aria-label="日 K 圖表">
           <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <div class="inline-flex max-w-full flex-wrap gap-1 rounded-lg bg-slate-950/80 p-1" aria-label="圖表模式" role="group">
+            <div id="chart-modes" hidden class="inline-flex max-w-full flex-wrap gap-1 rounded-lg bg-slate-950/80 p-1" aria-label="圖表模式" role="group">
               <button type="button" id="mode-btn-forecast" onclick="setChartMode('RECENT_FORECAST')">日 K ＋ 情境</button>
               <button type="button" id="mode-btn-fullcycle" onclick="setChartMode('FULL_CYCLE')">全週期示範</button>
             </div>
@@ -235,7 +237,7 @@
           </div>
 
           <!-- 卡片 2：未來情境模擬 -->
-          <div class="bg-[#151924] border border-slate-800 rounded-xl p-4 shadow-xl">
+          <div id="scenario-panel" hidden class="bg-[#151924] border border-slate-800 rounded-xl p-4 shadow-xl">
             <div class="pb-2.5 mb-3 border-b border-slate-800">
               <h2 id="scenario-box-title" class="text-xs font-bold text-amber-400">未來情境模擬</h2>
             </div>
@@ -466,7 +468,7 @@
     // 3. 全域應用程式狀態 (State)
     // ==========================================
     const state = {
-      selectedStockCode: '3481',
+      selectedStockCode: 'TAIEX',
       stockNames: {},
       liveCandlesMap: {},
       manualPrices: { RECENT_FORECAST: {}, FULL_CYCLE: {} },
@@ -506,8 +508,19 @@
       bbBand: '#60a5fa'
     };
 
+    function isMarketIndex() {
+      return state.selectedStockCode === 'TAIEX';
+    }
+
+    function displayLevel(value, currency = false) {
+      if (!Number.isFinite(value)) return '—';
+      if (isMarketIndex()) return value.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' 點';
+      return (currency ? '$' : '') + value.toFixed(2);
+    }
+
     function getCurrentStock() {
       const code = state.selectedStockCode;
+      if (code === 'TAIEX') return { code, name: '台灣加權指數', enName: '', sector: '' };
       const preset = STOCK_PRESETS[code];
       return {
         code,
@@ -549,8 +562,8 @@
       return null;
     }
 
-    function enrichCandlesWithIndicatorsAndForecast(rawCandles, maPeriod, bbStdMult, manualPrice) {
-      const futureDates = rawCandles.length >= maPeriod ? futureTradingDates(rawCandles.at(-1).date) : [];
+    function enrichCandlesWithIndicatorsAndForecast(rawCandles, maPeriod, bbStdMult, manualPrice, index = false) {
+      const futureDates = !index && rawCandles.length >= maPeriod ? futureTradingDates(rawCandles.at(-1).date) : [];
       const forecastCount = futureDates.length;
       const historyBars = rawCandles.map((c, idx) => ({
         index: idx,
@@ -563,7 +576,7 @@
         rule: null,
         paPattern: null,
         divergence: null,
-        source: 'finmind',
+        source: index ? 'twse' : 'finmind',
         isCurrent: idx === rawCandles.length - 1,
         isForecast: false
       }));
@@ -817,6 +830,26 @@
     // ==========================================
     // 5. 取得並驗證 FinMind 歷史日 K
     // ==========================================
+    function loadIndexBars() {
+      return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'data/taiex.js';
+        script.onload = () => { script.remove(); resolve(window.taiexHistory); };
+        script.onerror = () => { script.remove(); reject(new Error('無法載入證交所日 K')); };
+        document.head.appendChild(script);
+      });
+    }
+
+    async function loadStockBars(params) {
+      const response = await fetch(`https://api.finmindtrade.com/api/v4/data?${params}`, {
+        signal: AbortSignal.timeout(12000)
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      if (payload.msg !== 'success') throw new Error('FinMind 行情異常');
+      return payload.data;
+    }
+
     async function fetchRealTaiwanStockData(code) {
       const request = ++state.quoteRequest;
       state.quoteStatus = 'loading';
@@ -828,30 +861,25 @@
       const params = new URLSearchParams({ dataset: 'TaiwanStockPrice', data_id: code, start_date: startDate });
 
       try {
-        const res = await fetch(`https://api.finmindtrade.com/api/v4/data?${params}`, {
-          signal: AbortSignal.timeout(12000)
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const payload = await res.json();
-        if (payload.msg !== 'success' || !Array.isArray(payload.data)) {
-          throw new Error('Invalid FinMind response');
-        }
+        const index = code === 'TAIEX';
+        const rows = index ? await loadIndexBars() : await loadStockBars(params);
+        if (!Array.isArray(rows)) throw new Error('行情格式異常');
         if (request !== state.quoteRequest) return;
 
         const candles = new Map();
         const today = todayInTaipei();
-        for (const row of payload.data) {
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(row.date) || String(row.stock_id) !== code || row.date > today) continue;
+        for (const row of rows) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(row.date) || (!index && String(row.stock_id) !== code) || row.date > today) continue;
           const open = Number(row.open);
-          const high = Number(row.max);
-          const low = Number(row.min);
+          const high = Number(index ? row.high : row.max);
+          const low = Number(index ? row.low : row.min);
           const close = Number(row.close);
           if (![open, high, low, close].every(price => Number.isFinite(price) && price > 0)) continue;
           if (high < Math.max(open, close) || low > Math.min(open, close)) continue;
           const date = formatToSlashDate(row.date);
           const volume = Number(row.Trading_Volume);
           candles.set(date, {
-            date, open, high, low, close, volume: Number.isFinite(volume) ? Math.round(volume / 1000) : 0
+            date, open, high, low, close, volume: index ? null : (Number.isFinite(volume) ? Math.round(volume / 1000) : 0)
           });
         }
         if (candles.size) {
@@ -884,12 +912,15 @@
         state.chartData = generateDemoDataset(code, state.maPeriod, state.bbStd, manualPrice);
       } else {
         state.chartData = history?.length
-          ? enrichCandlesWithIndicatorsAndForecast(history, state.maPeriod, state.bbStd, manualPrice)
+          ? enrichCandlesWithIndicatorsAndForecast(isMarketIndex() ? history.slice(-200) : history, state.maPeriod, state.bbStd, manualPrice, isMarketIndex())
           : [];
       }
       state.currentBarIndex = state.chartData.findIndex((bar) => bar.isCurrent);
       const hasData = state.currentBarIndex !== -1;
-      document.getElementById('manual-price-details').hidden = !hasData;
+      document.getElementById('manual-price-details').hidden = !hasData || isMarketIndex();
+      document.getElementById('mobile-market-home').hidden = isMarketIndex();
+      document.getElementById('chart-modes').hidden = isMarketIndex();
+      document.getElementById('scenario-panel').hidden = isMarketIndex();
       for (const button of document.querySelectorAll('[onclick="exportChartDataCSV()"], [onclick="exportStrategyJSON()"]')) {
         button.disabled = !hasData;
       }
@@ -903,7 +934,7 @@
       renderFilterButtons();
       renderChartDataSource();
       if (!state.chartData.some(bar => bar.date === state.selectedBarDate)) state.selectedBarDate = null;
-      renderScenarioCards();
+      if (!isMarketIndex()) renderScenarioCards();
       renderBottomMatrix();
       renderChartSelection();
     }
@@ -913,7 +944,8 @@
       const isDemo = state.chartMode === 'FULL_CYCLE';
       const lastDate = state.liveCandlesMap[state.selectedStockCode]?.at(-1)?.date;
       const cached = state.quoteStatus === 'error' || state.quoteStatus === 'not-found';
-      const failure = state.quoteStatus === 'not-found' ? '查無可用的 FinMind 日 K' : 'FinMind 日 K 查詢失敗';
+      const provider = isMarketIndex() ? '證交所' : 'FinMind';
+      const failure = state.quoteStatus === 'not-found' ? `查無可用的${provider}日 K` : `${provider}日 K 查詢失敗`;
       const badge = document.getElementById('status-badge-text');
       const source = document.getElementById('chart-data-source');
       source.classList.remove('hidden', 'md:block');
@@ -931,9 +963,14 @@
       } else if (cached) {
         badge.textContent = lastDate ? `${failure}，顯示快取（${lastDate}）` : failure;
       } else {
-        badge.textContent = `FinMind 最近交易日 ${lastDate}`;
+        badge.textContent = `${provider} 最近交易日 ${lastDate}`;
       }
 
+      if (isMarketIndex()) {
+        source.textContent = baseCandle ? `證交所歷史日 K（點）截至 ${lastDate}` :
+          cached ? `${failure}，請重新整理。` : '正在載入證交所歷史日 K。';
+        return;
+      }
       if (!baseCandle) {
         source.textContent = cached
           ? `${failure}。可重新查詢、選擇其他標的，或開啟葛蘭碧全週期示範。`
@@ -961,6 +998,7 @@
 
     function getCandleSourceLabel(candle) {
       const labels = {
+        twse: '證交所歷史日 K',
         finmind: 'FinMind 歷史日 K',
         manual: '手動校正資料',
         demo: candle.isManuallyAdjusted ? '手動校正的示範資料' : '示範資料',
@@ -982,7 +1020,7 @@
     function renderPresetButtons() {
       const container = document.getElementById('preset-buttons-container');
       if (!container) return;
-      container.innerHTML = Object.values(STOCK_PRESETS)
+      container.innerHTML = [{ code: 'TAIEX', name: '大盤' }, ...Object.values(STOCK_PRESETS)]
         .map((st) => {
           const isSelected = state.selectedStockCode === st.code;
           return `<button
@@ -990,7 +1028,7 @@
             class="px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all ${
               isSelected ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-300 hover:text-white hover:bg-slate-800/70'
             }"
-          >${st.code} ${st.name}</button>`;
+          >${st.code === 'TAIEX' ? '大盤' : st.code + ' ' + st.name}</button>`;
         })
         .join('');
     }
@@ -1073,7 +1111,7 @@
         date: last.date.replaceAll('/', '-'),
         price: last.close,
         changePct: changeFromPrevious(last.close, history[history.indexOf(last) - 1]?.close),
-        source: 'FinMind 日 K'
+        source: isMarketIndex() ? '證交所日 K' : 'FinMind 日 K'
       } : null;
       const recorded = state.premarket?.code === state.selectedStockCode ? state.premarket.close : null;
       if (recorded && recorded.date <= today && (!latest || recorded.date > latest.date)) latest = recorded;
@@ -1137,7 +1175,7 @@
       document.getElementById('premarket-values').hidden = !record;
       status.hidden = Boolean(record);
       if (record) {
-        document.getElementById('premarket-price').textContent = `$${formatIndicator(record.price)}`;
+        document.getElementById('premarket-price').textContent = displayLevel(record.price, true);
         const direction = document.getElementById('premarket-direction');
         direction.textContent = record.direction;
         direction.style.color = dailyChangeColor(record.direction === '漲' ? 1 : record.direction === '跌' ? -1 : 0);
@@ -1147,7 +1185,7 @@
       } else {
         const messages = {
           loading: '讀取今日盤前紀錄…',
-          ready: '今日尚無盤前紀錄',
+          ready: '今日尚無盤前預測',
           error: '盤前紀錄讀取失敗，請重新整理',
           closed: '今日休市',
           file: '透過網站或本機伺服器查看盤前紀錄'
@@ -1159,10 +1197,11 @@
     function renderSummaryBanner() {
       const stock = getCurrentStock();
       const base = state.chartData[state.currentBarIndex];
-      document.getElementById('mobile-stock-title').textContent = `${stock.code} ${stock.name}`;
+      const title = isMarketIndex() ? '台灣加權指數（TAIEX）' : `${stock.code} ${stock.name}`;
+      document.getElementById('mobile-stock-title').textContent = title;
 
       document.getElementById('stock-sector-badge').textContent = stock.sector;
-      document.getElementById('stock-title').textContent = `${stock.code} ${stock.name}`;
+      document.getElementById('stock-title').textContent = title;
       document.getElementById('stock-en-name').textContent = stock.enName;
       const latest = state.chartMode === 'FULL_CYCLE'
         ? (base && { price: base.close, date: base.date.replaceAll('/', '-'), changePct: base.changePct, source: '全週期示範' })
@@ -1171,13 +1210,13 @@
       document.getElementById('today-price-label').textContent = latest ? `${priceLabel}（${latest.date}）` : priceLabel;
 
       const priceEl = document.getElementById('stock-current-price');
-      priceEl.textContent = latest ? `$${formatIndicator(latest.price)}` : '—';
+      priceEl.textContent = latest ? displayLevel(latest.price, true) : '—';
       priceEl.style.color = dailyChangeColor(latest?.changePct);
       document.getElementById('stock-close-source').textContent = latest?.source ?? '';
 
       document.getElementById('ma20-label-title').textContent = `生命線 MA${state.maPeriod}`;
-      document.getElementById('stock-ma20-val').textContent = formatIndicator(base?.ma20);
-      document.getElementById('stock-ma60-val').textContent = formatIndicator(base?.ma60);
+      document.getElementById('stock-ma20-val').textContent = displayLevel(base?.ma20);
+      document.getElementById('stock-ma60-val').textContent = displayLevel(base?.ma60);
       document.getElementById('stock-ma60-summary').hidden = state.maPeriod === 60;
       document.getElementById('stock-summary-status').textContent = base
         ? `基準日乖離率 ${formatPercent(base.bias20)}`
@@ -1221,17 +1260,17 @@
             ${activeCandle.dateWithDay || activeCandle.date}
           </span>
           <span class="px-2 py-0.5 rounded border font-sans text-[11px] font-medium ${badgeStyle}">${getCandleSourceLabel(activeCandle)}</span>
-          <span>開 <strong class="text-slate-200">${activeCandle.open.toFixed(2)}</strong></span>
-          <span>高 <strong class="text-slate-200">${activeCandle.high.toFixed(2)}</strong></span>
-          <span>低 <strong class="text-slate-200">${activeCandle.low.toFixed(2)}</strong></span>
-          <span>收 <strong style="color:${dailyChangeColor(activeCandle.changePct)}">${activeCandle.close.toFixed(2)} (${formatPercent(activeCandle.changePct)})</strong></span>
+          <span>開 <strong class="text-slate-200">${displayLevel(activeCandle.open)}</strong></span>
+          <span>高 <strong class="text-slate-200">${displayLevel(activeCandle.high)}</strong></span>
+          <span>低 <strong class="text-slate-200">${displayLevel(activeCandle.low)}</strong></span>
+          <span>收 <strong style="color:${dailyChangeColor(activeCandle.changePct)}">${displayLevel(activeCandle.close)} (${formatPercent(activeCandle.changePct)})</strong></span>
         </div>
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
           ${state.selectedBarDate ? '<span class="text-amber-300">已鎖定日期</span>' : ''}
           ${activeCandle.rule ? `<span class="font-semibold text-slate-100">${GRANVILLE_RULES_INFO[activeCandle.rule].shortLabel}</span>` : ''}
-          <span style="color:${colors.ma20}">MA${state.maPeriod}: <strong>${formatIndicator(activeCandle.ma20)}</strong></span>
-          ${state.maPeriod !== 60 ? `<span style="color:${colors.ma60}">MA60: <strong>${formatIndicator(activeCandle.ma60)}</strong></span>` : ''}
-          ${state.filters.bollinger ? `<span class="text-blue-400">BB(${state.bbStd}σ): ${activeCandle.bbLower === null ? '—' : `${formatIndicator(activeCandle.bbLower)} ～ ${formatIndicator(activeCandle.bbUpper)}`}</span>` : ''}
+          <span style="color:${colors.ma20}">MA${state.maPeriod}: <strong>${displayLevel(activeCandle.ma20)}</strong></span>
+          ${state.maPeriod !== 60 ? `<span style="color:${colors.ma60}">MA60: <strong>${displayLevel(activeCandle.ma60)}</strong></span>` : ''}
+          ${state.filters.bollinger ? `<span class="text-blue-400">BB(${state.bbStd}σ): ${activeCandle.bbLower === null ? '—' : `${displayLevel(activeCandle.bbLower)} ～ ${displayLevel(activeCandle.bbUpper)}`}</span>` : ''}
           <span class="text-slate-300">乖離率: <strong class="${Math.abs(activeCandle.bias20) > 5 ? 'text-amber-400' : 'text-slate-200'}">${formatPercent(activeCandle.bias20)}</strong></span>
         </div>
       `;
@@ -1275,7 +1314,7 @@
       const yTicks = [];
       for (let i = 0; i <= 6; i++) {
         const val = yMin + ((yMax - yMin) / 6) * i;
-        yTicks.push({ value: val.toFixed(1), y: getY(val) });
+        yTicks.push({ value: val.toFixed(isMarketIndex() ? 2 : 1), y: getY(val) });
       }
 
       const macdTop = mainHeight + 22;
@@ -1341,7 +1380,7 @@
           </g>
         `);
       });
-      svgParts.push(`<text x="${width - 12}" y="16" fill="#cbd5e1" font-size="11" font-weight="bold" text-anchor="end">股價 (TWD)</text>`);
+      svgParts.push(`<text x="${width - 12}" y="16" fill="#cbd5e1" font-size="11" font-weight="bold" text-anchor="end">${isMarketIndex() ? '指數（點）' : '股價 (TWD)'}</text>`);
 
       const indicatorPoints = (key) => chartData.flatMap((bar, index) =>
         Number.isFinite(bar[key]) ? [`${getX(index)},${getY(bar[key])}`] : []
@@ -1454,7 +1493,7 @@
           <g>
             <line x1="${padLeft}" y1="${mainHeight}" x2="${width - padRight}" y2="${mainHeight}" stroke="#334155" stroke-width="1.5" />
             <text x="${padLeft + 6}" y="${macdTop - 4}" fill="#cbd5e1" font-size="10.5" font-weight="bold">
-              MACD (12,26,9) · DIF ${activeCandle.dif} / DEA ${activeCandle.dea}
+              MACD (12,26,9) · DIF ${isMarketIndex() ? formatIndicator(activeCandle.dif) : activeCandle.dif} / DEA ${isMarketIndex() ? formatIndicator(activeCandle.dea) : activeCandle.dea}
             </text>
             <line x1="${padLeft}" y1="${macdZeroY}" x2="${width - padRight}" y2="${macdZeroY}" stroke="#475569" stroke-width="1" stroke-dasharray="3,3" />
             <text x="${width - padRight + 8}" y="${macdZeroY + 4}" fill="#94a3b8" font-size="10" font-family="monospace">0.00</text>
@@ -1511,7 +1550,7 @@
         return;
       }
 
-      dateLabel.textContent = `${c.dateWithDay || c.date}　${getCandleSourceLabel(c)}　收盤 ${formatIndicator(c.close)} 元`;
+      dateLabel.textContent = `${c.dateWithDay || c.date}　${getCandleSourceLabel(c)}　收盤 ${displayLevel(c.close)}${isMarketIndex() ? '' : ' 元'}`;
 
       const unavailable = { status: 'UNAVAILABLE', title: '資料不足', detail: `至少需要 ${state.maPeriod} 筆日 K。` };
       const bbStatus = c.isSqueeze === null ? unavailable : {
@@ -1526,7 +1565,7 @@
         granvilleStatus = {
           status: aboveAverage ? 'PASS' : 'FAIL',
           title: `收盤位於 MA${state.maPeriod} ${aboveAverage ? '上方或持平' : '下方'}`,
-          detail: `均線 ${formatIndicator(c.ma20)} 元，乖離率 ${formatPercent(c.bias20)}。`
+          detail: `均線 ${displayLevel(c.ma20)}${isMarketIndex() ? '' : ' 元'}，乖離率 ${formatPercent(c.bias20)}。`
         };
         if (Math.abs(c.bias20) > 5.2) {
           granvilleStatus.status = 'WARN';
@@ -1665,7 +1704,8 @@
       state.selectedBarDate = null;
       state.hoveredIndex = null;
       const toggle = document.getElementById('stock-controls-toggle');
-      if (toggle.offsetWidth && document.getElementById('stock-controls').contains(document.activeElement)) toggle.focus();
+      const returningHome = document.activeElement?.id === 'mobile-market-home';
+      if (toggle.offsetWidth && (returningHome || document.getElementById('stock-controls').contains(document.activeElement))) toggle.focus();
       setStockControls(false);
       setRuleStatus('');
       loadPremarket(code);
@@ -1684,7 +1724,7 @@
     }
 
     function setChartMode(mode) {
-      if (state.chartMode === mode) return;
+      if (isMarketIndex() || state.chartMode === mode) return;
       state.chartMode = mode;
       if (mode === 'RECENT_FORECAST' && state.premarket?.date !== todayInTaipei()) loadPremarket(state.selectedStockCode);
       state.selectedBarDate = null;
@@ -1782,7 +1822,8 @@
     function exportChartDataCSV() {
       if (!state.chartData.length) return;
       const stock = getCurrentStock();
-      const headers = ['日期(YYYY/MM/DD)', '區間類型', '開盤價', '最高價', '最低價', '收盤價', '漲跌幅(%)', state.maPeriod === 60 ? 'MA60（選定週期）' : `MA${state.maPeriod}`, 'MA60', '布林上軌', '布林下軌', '乖離率(%)', 'MACD(DIF)', 'MACD(DEA)', '葛蘭碧買賣點', '關鍵K線(PA)'];
+      const levels = isMarketIndex() ? ['開盤指數(點)', '最高指數(點)', '最低指數(點)', '收盤指數(點)'] : ['開盤價', '最高價', '最低價', '收盤價'];
+      const headers = ['日期(YYYY/MM/DD)', '區間類型', ...levels, '漲跌幅(%)', state.maPeriod === 60 ? 'MA60（選定週期）' : `MA${state.maPeriod}`, 'MA60', '布林上軌', '布林下軌', '乖離率(%)', 'MACD(DIF)', 'MACD(DEA)', '葛蘭碧買賣點', '關鍵K線(PA)'];
       const rows = state.chartData.map((d) => [
         d.date,
         getCandleSourceLabel(d),
@@ -1807,7 +1848,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${stock.code}_${stock.name}_葛蘭碧2個月預測報表.csv`;
+      a.download = isMarketIndex() ? 'TAIEX_歷史日K.csv' : `${stock.code}_${stock.name}_葛蘭碧2個月預測報表.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1828,6 +1869,7 @@
         twoMonthForecastEnd: last.isForecast ? last.date : null,
         stock: {
           ...stock,
+          unit: isMarketIndex() ? '點' : '元',
           basePrice: history[0].close,
           peakPrice: Math.max(...history.map((bar) => bar.high)),
           dipPrice: Math.min(...history.map((bar) => bar.low)),
@@ -1935,7 +1977,6 @@
         showToast(`基準價已校正為 $${formatIndicator(price)}。`);
       });
 
-      // 初始載入預設標的 (3481 群創)
       selectStock(state.selectedStockCode);
     });
   </script>

@@ -1,5 +1,7 @@
-import { appendFile } from 'node:fs/promises';
+import { appendFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import indexParameters from './taiex-model-parameters.json' with { type: 'json' };
+import { barsThrough, readStart, activationDate, activationFile } from './taiex.mjs';
 import parameters from './daily-model-parameters.json' with { type: 'json' };
 import { directions, features, predictDaily } from './daily-model.mjs';
 import { MonthlyRecords } from './price-tracking-records.mjs';
@@ -8,6 +10,11 @@ import {
 } from './price-tracking-market.mjs';
 
 const recordsDirectory = fileURLToPath(new URL('../data/daily-price-tracking', import.meta.url));
+const indexStart = await readStart();
+export function trackingSymbols(date, start = indexStart) {
+  return start && date >= start ? [...symbols, 'TAIEX'] : symbols;
+}
+
 const timeZone = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
   hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
@@ -26,26 +33,30 @@ export function validDate(date) {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(date)) && shiftDate(date, 0) === date;
 }
 
-async function forecastFor(stock, previous) {
-  const series = await finMindPrices(stock, shiftDate(previous, -120), previous);
+async function forecastFor(stock, previous, persist) {
+  const index = stock === 'TAIEX';
+  const deployment = index ? indexParameters : parameters;
+  const series = index
+    ? new Map((await barsThrough(previous, persist)).map(row => [row.date, row.close]))
+    : await finMindPrices(stock, shiftDate(previous, -120), previous);
   const dates = [...series.keys()].sort();
   if (dates.length < 21 || dates.at(-1) !== previous) {
-    throw new Error(`needs 21 FinMind records through ${previous}`);
+    throw new Error(`needs 21 daily records through ${previous}`);
   }
-  const closes = dates.map((date) => Number(series.get(date).toFixed(2)));
+  const closes = dates.slice(-21).map((date) => Number(series.get(date).toFixed(2)));
   const previousClose = closes.at(-1);
-  const model = { ...parameters.models[stock], priceMethod: parameters.priceMethod, directionMethod: parameters.directionMethod };
+  const model = { ...deployment.models[stock], priceMethod: deployment.priceMethod, directionMethod: deployment.directionMethod };
   const prediction = predictDaily(model, features(closes), previousClose);
   return {
     forecast_close: prediction.close.toFixed(2), previous_close: previousClose.toFixed(2),
-    forecast_direction: prediction.direction, model_version: parameters.version
+    forecast_direction: prediction.direction, model_version: deployment.version
   };
 }
 
-async function collectForecasts(date, targets) {
+async function collectForecasts(date, targets, persist = true) {
   if (!targets.length) return [];
   const previous = await previousTradingDate(date);
-  const results = await Promise.allSettled(targets.map((symbol) => forecastFor(symbol, previous)));
+  const results = await Promise.allSettled(targets.map((symbol) => forecastFor(symbol, previous, persist)));
   return results.flatMap((result, index) => {
     const stock = targets[index];
     if (result.status === 'fulfilled') return [[stock, result.value]];
@@ -54,9 +65,9 @@ async function collectForecasts(date, targets) {
   });
 }
 
-async function officialCloses(date, targets, preferLatest, allowFinMind) {
+async function officialCloses(date, targets, preferLatest, allowFinMind, persist = true) {
   let latest = new Map();
-  if (preferLatest && targets.length) {
+  if (preferLatest && targets.some(code => code !== 'TAIEX')) {
     latest = await latestTWSEPrices(date).catch((error) => {
       console.warn(`${date} TWSE OpenAPI: ${error.message}`);
       return new Map();
@@ -67,13 +78,19 @@ async function officialCloses(date, targets, preferLatest, allowFinMind) {
   for (const stock of targets) {
     let close = latest.get(stock);
     let source = 'TWSE';
-    if (close === undefined) {
+    if (stock === 'TAIEX') {
+      const bars = await barsThrough(date, persist).catch(error => {
+        console.warn(date + ' TAIEX: ' + error.message);
+        return [];
+      });
+      close = bars.find(bar => bar.date === date)?.close;
+    } else if (close === undefined) {
       close = await historicalTWSEClose(stock, date).catch((error) => {
         console.warn(`${date} ${stock} TWSE: ${error.message}`);
         return undefined;
       });
     }
-    if (close === undefined && allowFinMind) {
+    if (stock !== 'TAIEX' && close === undefined && allowFinMind) {
       source = 'FinMind';
       close = await finMindPrices(stock, date, date)
         .then((quotes) => quotes.get(date))
@@ -94,9 +111,9 @@ async function officialCloses(date, targets, preferLatest, allowFinMind) {
   return results;
 }
 
-export async function runForecast(records, date, started, collect = collectForecasts, clock = taipeiClock) {
+export async function runForecast(records, date, started, collect = collectForecasts, clock = taipeiClock, start = indexStart) {
   const targets = [];
-  for (const stock of symbols) {
+  for (const stock of trackingSymbols(date, start)) {
     if (!(await records.get(date, stock))?.forecast_close) targets.push(stock);
   }
   if (!targets.length) {
@@ -129,11 +146,12 @@ export function onTimeForecast(row, date) {
   if (!row || !(Number.isFinite(+row.forecast_close) && +row.forecast_close > 0)) return false;
   const [day, time] = (row.forecast_at || '').split(' ');
   if (day !== date || !/^0[6-8]:[0-5]\d:[0-5]\d$/.test(time)) return false;
-  if (!row.model_version?.startsWith('daily-v2-')) return true;
+  if (row.stock_id !== 'TAIEX' && !row.model_version?.startsWith('daily-v2-')) return true;
+  if (row.stock_id === 'TAIEX' && !row.model_version?.startsWith('taiex-v1-')) return false;
   return Number.isFinite(+row.previous_close) && +row.previous_close > 0 && directions.includes(row.forecast_direction);
 }
 
-async function auditForecasts(date, now) {
+async function auditForecasts(date, now, start = indexStart) {
   let message;
   let failure;
   if (!await isTradingDate(date)) {
@@ -144,15 +162,16 @@ async function auditForecasts(date, now) {
   } else {
     const records = new MonthlyRecords(recordsDirectory);
     const missing = [];
-    for (const stock of symbols) {
+    for (const stock of trackingSymbols(date, start)) {
       const row = await records.get(date, stock);
       if (!onTimeForecast(row, date)) {
         missing.push(stock);
       }
     }
-    message = `已完成 ${symbols.length - missing.length}/${symbols.length} 檔。`;
+    const total = trackingSymbols(date, start).length;
+    message = `已完成 ${total - missing.length}/${total} 個標的。`;
     if (missing.length) {
-      failure = `缺漏股票代號：${missing.join('、')}。`;
+      failure = `缺漏標的：${missing.join('、')}。`;
       message = `${message}\n\n${failure}`;
     }
   }
@@ -166,9 +185,9 @@ function hasClose(row) {
   return Number.isFinite(price) && price > 0;
 }
 
-export async function runClose(records, date, today, allowFinMind, pendingOnly = false, collect = officialCloses) {
+export async function runClose(records, date, today, allowFinMind, pendingOnly = false, collect = officialCloses, start = indexStart) {
   const missing = [];
-  for (const stock of symbols) {
+  for (const stock of trackingSymbols(date, start)) {
     const row = await records.get(date, stock);
     if (hasClose(row) || (pendingOnly && !row)) continue;
     missing.push(stock);
@@ -189,10 +208,10 @@ export async function retryDates(date, includeBacklog) {
   return dates;
 }
 
-export async function checkCloses(records, dates) {
+export async function checkCloses(records, dates, start = indexStart) {
   const missing = [];
   for (const { date, pendingOnly } of dates) {
-    for (const stock of symbols) {
+    for (const stock of trackingSymbols(date, start)) {
       const row = await records.get(date, stock);
       if ((!pendingOnly || row) && !hasClose(row)) {
         missing.push(date + ' ' + stock);
@@ -210,6 +229,15 @@ export function closeScheduleDate(now, schedule) {
 }
 
 async function main(mode, requestedDate, option) {
+  if (mode === 'activate-index') {
+    if (indexStart) return;
+    const now = taipeiClock();
+    // 首次盤前排程即使延遲啟動，仍從該次應交付日計算。
+    const scheduled = ['0 7 * * *', '20 7 * * *'].includes(process.env.ACTION_SCHEDULE);
+    const start = await activationDate(now.date, scheduled ? 7 : now.hour);
+    await writeFile(activationFile, start + '\n', { flag: 'wx' });
+    return summary('大盤盤前準時率自 ' + start + ' 起算。');
+  }
   if (!['forecast', 'close', 'retry', 'verify', 'audit', 'check-close'].includes(mode)) throw new Error('Use forecast, close, retry, check-close, verify or audit');
   const now = taipeiClock();
   const scheduledDate = closeScheduleDate(now, process.env.ACTION_SCHEDULE);
@@ -233,10 +261,11 @@ async function main(mode, requestedDate, option) {
     return;
   }
   if (mode === 'verify') {
-    const forecasts = await collectForecasts(date, symbols);
-    const closes = await officialCloses(date, symbols, date === now.date, false);
-    if (forecasts.length !== symbols.length || closes.length !== symbols.length) {
-      throw new Error(`Verification incomplete: ${forecasts.length} forecasts and ${closes.length} official closes for ${symbols.length} stocks`);
+    const targets = [...symbols, 'TAIEX'];
+    const forecasts = await collectForecasts(date, targets, false);
+    const closes = await officialCloses(date, targets, date === now.date, false, false);
+    if (forecasts.length !== targets.length || closes.length !== targets.length) {
+      throw new Error(`Verification incomplete: ${forecasts.length} forecasts and ${closes.length} official closes for ${targets.length} instruments`);
     }
     console.log(`${date}: verified ${forecasts.length} forecasts and ${closes.length} dated TWSE closes; CSV not modified`);
     return;

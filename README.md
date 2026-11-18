@@ -14,15 +14,15 @@ git clone https://github.com/iankingh/tw-stock-strategy-lab.git
 cd tw-stock-strategy-lab
 ```
 
-工作站使用原生 JavaScript、SVG 和 Tailwind CSS CDN。把 `index.html`、`forecast-model.js` 和 `trading-calendar.js` 放在同一個目錄，即可用瀏覽器開啟。Tailwind CSS、Google Fonts 和 FinMind 日 K 資料會透過網路載入。
+工作站使用原生 JavaScript、SVG 和 Tailwind CSS CDN。請保留解壓後的目錄結構，首頁會從 `data/taiex.js` 載入證交所大盤日 K。Tailwind CSS、Google Fonts 和 FinMind 日 K 資料會透過網路載入。
 
 ## 操作方式
 
-1. 選擇預設標的，或輸入台股代號並按「查日 K」。在手機上，先點頂部的「換股」。
+1. 進站與重新整理時預設顯示台灣加權指數。點選個股或輸入代號查日 K，手機可展開「選標的」，並用「回大盤」一鍵返回。
 2. 點選 K 線可鎖定交易日，圖表和側欄會顯示該日指標。使用「前一日」、「後一日」或鍵盤左右方向鍵切換。按 Home 或「回基準日」即可返回。
 3. 展開圖表下方的「圖層與法則」調整均線、布林通道及其他圖層，或定位葛蘭碧訊號。點選側欄的情境點也可定位對應日期。
 
-行情摘要顯示 FinMind 日 K 與每日收盤紀錄中最新的實際收盤價，並標明交易日與來源。「盤中行情」會另開證交所基本市況報導網站。當日盤前紀錄另列預估收盤、方向及台灣時間。用本機檔案直接開啟時，可在專案目錄執行 `python3 -m http.server 8000`，再用瀏覽器開啟 [本機工作站](http://localhost:8000/) 讀取 CSV。
+大盤以點顯示，個股以元顯示。行情摘要顯示證交所大盤日 K 或 FinMind 個股日 K 與每日收盤紀錄中最新的實際收盤價，並標明交易日與來源。「盤中行情」會另開證交所基本市況報導網站。當日盤前紀錄另列預估收盤、方向及台灣時間。用本機檔案直接開啟時，可在專案目錄執行 `python3 -m http.server 8000`，再用瀏覽器開啟 [本機工作站](http://localhost:8000/) 讀取 CSV。
 
 ## 資料來源與情境
 
@@ -46,17 +46,17 @@ JSON 每根 K 線的 `selectedMA`、`selectedBiasPct` 及標的摘要的 `select
 
 ## 每日預測與收盤紀錄
 
-GitHub Actions 以台灣時間執行，追蹤 2312、2317、2330、2603、3231、3481 六檔上市股票。每月一份 CSV 存在 [`data/daily-price-tracking/`](https://github.com/iankingh/tw-stock-strategy-lab/tree/main/data/daily-price-tracking)，檔名以交易日的年月組成，例如 `2026-11.csv`。
+GitHub Actions 以台灣時間執行，追蹤 2312、2317、2330、2603、3231、3481 六檔上市股票及加權指數（CSV 代號 `TAIEX`）。每月一份 CSV 存在 [`data/daily-price-tracking/`](https://github.com/iankingh/tw-stock-strategy-lab/tree/main/data/daily-price-tracking)，檔名以交易日的年月組成，例如 `2026-11.csv`。
 
 欄位依序為「交易日、股票代號、預測收盤價、預測時間、實際收盤價、收盤價取得時間、策略版本、昨收、預測方向」。既有紀錄可讀取，舊預測沒有記錄的欄位留空。
 
 | 時間 | 記錄工作 |
 | --- | --- |
-| 07:00 | 以截至前一交易日的 FinMind 日 K 分別估計收盤價與漲跌平，記錄昨收與模型版本。盤前工作摘要會列出台灣實際啟動時間。 |
+| 07:00 | 以截至前一交易日的大盤或個股日 K 分別估計收盤價與漲跌平，記錄昨收與模型版本。盤前工作摘要會列出台灣實際啟動時間。 |
 | 07:20 | 補跑缺漏的盤前預測。已記錄的預測保留原值和時間。 |
-| 09:15 | 檢查六檔盤前預測是否齊全。GitHub Actions 摘要會列出完成數量與缺漏股票代號，缺漏時工作標示失敗。 |
+| 09:15 | 檢查啟用中的標的盤前預測是否齊全。GitHub Actions 摘要會列出完成數量與缺漏股票代號，缺漏時工作標示失敗。 |
 | 17:00 | 查詢證交所當天的實際收盤價，依交易日期和股票代號補上同一列。 |
-| 17:45 | 重查未取得的收盤價，並處理前七天已有紀錄的缺值。證交所尚未提供時，以日期吻合的 FinMind 日 K 補抓。先提交取得的價格，再檢查缺漏；仍有缺值會列出日期與代號，工作標示失敗。 |
+| 17:45 | 重查未取得的收盤價，並處理前七天已有紀錄的缺值。個股可用日期吻合的 FinMind 日 K 補抓，大盤採證交所月報。先提交取得的價格，再檢查缺漏；仍有缺值會列出日期與代號，工作標示失敗。 |
 
 排程依證交所日曆判斷休市。CSV 以 `YYYY-MM-DD HH:mm:ss` 記錄實際台灣時間。若盤前工作延遲到 09:00 之後，或歷史資料未更新至前一交易日，預測欄會留空。資料延遲時收盤價欄會留空，補抓時會寫回原交易月份。
 
@@ -98,3 +98,16 @@ node --test
 [GitHub Pages 發布設定文件](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
 
 本工具僅供技術分析教學與研究參考。模擬結果不代表實際未來走勢，也不構成投資建議。
+
+## 大盤預測與實盤績效
+
+大盤首頁使用證交所日 K 與均線。「盤前預測」顯示當日已寫入的點位、方向與台灣時間，「盤中行情」可另開證交所網站。歷史回測與實際盤前紀錄分開保存。[證交所加權指數歷史資料](https://www.twse.com.tw/zh/indices/taiex/mi-5min-hist.html)
+
+```sh
+node research/taiex-backtest.mjs
+node scripts/taiex.mjs 2023-01-01 2026-11-18
+```
+
+第一行用本地行情與封存交易日重算大盤模型參數和結果表。第二行從證交所重抓指定日期範圍的日 K。2026 年截至 11 月 17 日的 210 個交易日，採用昨收點位的平均絕對誤差為 600.69 點（昨收的 1.483%）。方向基準固定預測「漲」，命中 114 天（54.286%），96 個下跌日均未命中。[完整大盤回測與逐類命中數](research/taiex-results.md)
+
+功能進入 main 後，工作流程在 `data/taiex-start.txt` 記下首個應交付的大盤交易日。交易日 09:00 前啟用從當天起算，其餘順延至下一個可交付交易日。收盤補抓會同步保存同源日 K，每月 CSV 使用現有欄位。排程提交行情變更後會要求 GitHub Pages 重新建置首頁。`node scripts/live-performance.mjs 起日 迄日` 分別列出大盤與六檔個股的準時率、已配對誤差及方向命中率。

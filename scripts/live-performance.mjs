@@ -1,17 +1,18 @@
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { MonthlyRecords } from './price-tracking-records.mjs';
 import { onTimeForecast, validDate } from './daily-price-tracking.mjs';
+import { readStart } from './taiex.mjs';
 import { direction, directions } from './daily-model.mjs';
 import { isTradingDate, shiftDate, symbols } from './price-tracking-market.mjs';
 
-export async function livePerformance(records, start, end) {
+export async function livePerformance(records, start, end, targets = symbols) {
   let days = 0, complete = 0, timely = 0;
   const versions = new Map();
   for (let date = start; date <= end; date = shiftDate(date, 1)) {
     if (!await isTradingDate(date)) continue;
     days++;
     let count = 0;
-    for (const stock of symbols) {
+    for (const stock of targets) {
       const row = await records.get(date, stock);
       if (!onTimeForecast(row, date)) continue;
       count++;
@@ -31,7 +32,7 @@ export async function livePerformance(records, start, end) {
       if (direction(Number(row.actual_close) - Number(row.previous_close)) === row.forecast_direction) result.correct++;
     }
     timely += count;
-    if (count === symbols.length) complete++;
+    if (count === targets.length) complete++;
   }
   return { days, complete, timely, versions };
 }
@@ -46,10 +47,16 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     throw new Error(`用法：node scripts/live-performance.mjs 起日 迄日，範圍為 2026-11-17 至 ${cutoff}`);
   }
   const records = new MonthlyRecords(fileURLToPath(new URL('../data/daily-price-tracking', import.meta.url)));
-  const { days, complete, timely, versions } = await livePerformance(records, start, end);
   const average = (sum, n, unit) => n ? (sum / n).toFixed(3) + unit : '—';
-  console.log(`${start} ～ ${end}：六檔準時完成 ${complete}/${days} 個交易日，個股準時 ${timely}/${days * symbols.length} 筆。`);
-  for (const [version, r] of versions) {
-    console.log(`${version}：準時 ${r.onTime}，已配對收盤 ${r.scored}，平均絕對誤差 ${average(r.abs, r.scored, '元')}，占昨收 ${average(r.pct, r.normalized, '%')}，方向命中 ${r.correct}/${r.classified}（${average(100 * r.correct, r.classified, '%')}）。`);
+  const first = await readStart();
+  const groups = [{ label: '六檔個股', targets: symbols, from: start, unit: '元' }];
+  if (first && first <= end) groups.push({ label: '大盤', targets: ['TAIEX'], from: first > start ? first : start, unit: '點' });
+  for (const { label, targets, from, unit } of groups) {
+    const { days, complete, timely, versions } = await livePerformance(records, from, end, targets);
+    console.log(`${from} ～ ${end}：${label}準時完成 ${complete}/${days} 個交易日，準時 ${timely}/${days * targets.length} 筆。`);
+    for (const [version, r] of versions) {
+      console.log(`${version}：準時 ${r.onTime}，已配對收盤 ${r.scored}，平均絕對誤差 ${average(r.abs, r.scored, unit)}，占昨收 ${average(r.pct, r.normalized, '%')}，方向命中 ${r.correct}/${r.classified}（${average(100 * r.correct, r.classified, '%')}）。`);
+    }
   }
+  if (!first || first > end) console.log('此區間尚未啟用大盤盤前追蹤。');
 }
