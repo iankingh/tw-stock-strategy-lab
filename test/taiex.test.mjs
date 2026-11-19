@@ -39,14 +39,14 @@ test('啟用日起大盤獨立計分，逾時留白、重跑保留預測、收�
   assert.ok(trackingSymbols(day, day).includes('TAIEX'));
   assert.equal(await activationDate('2026-11-20', 9), '2026-11-23');
   assert.equal(await activationDate('2026-11-21', 7), '2026-11-23');
-  for (const stock of symbols) await records.update(day, stock, { forecast_close: '1', actual_close: '1' });
+  for (const stock of symbols) await records.update(day, stock, { forecast_close: '1', actual_close: '1', forecast_at: day + ' 07:00:00' });
   const early = { date: day, hour: 7, timestamp: day + ' 07:05:01' };
   const late = { date: day, hour: 9, timestamp: day + ' 09:00:01' };
   await assert.rejects(runForecast(records, day, late, undefined, () => late, day), /outside/);
   assert.equal(await records.get(day, 'TAIEX'), undefined);
   await runForecast(records, day, early, undefined, () => early, day);
   const row = await records.get(day, 'TAIEX');
-  assert.equal(row.previous_close, '40092.11');
+  assert.equal(row.previous_close, 40092.11);
   assert.equal(row.forecast_at, early.timestamp);
   assert.match(row.model_version, /^taiex-v1-/);
   assert.equal(onTimeForecast(row, day), true);
@@ -57,7 +57,7 @@ test('啟用日起大盤獨立計分，逾時留白、重跑保留預測、收�
   await runClose(records, day, '2026-11-19', false, false, undefined, day);
   await records.save();
   const disk = new MonthlyRecords(dir);
-  assert.equal((await disk.get(day, 'TAIEX')).actual_close, '40194.91');
+  assert.equal((await disk.get(day, 'TAIEX')).actual_close, 40194.91);
   assert.equal((await disk.get(day, 'TAIEX')).forecast_at, early.timestamp);
   await checkCloses(disk, dates, day);
   const result = await livePerformance(disk, day, '2026-11-19', ['TAIEX']);

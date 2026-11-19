@@ -1,8 +1,8 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import scenario from '../forecast-model.js';
+import * as scenario from '../shared/forecast-model.js';
 import { symbols } from '../scripts/price-tracking-market.mjs';
-import { direction, directions, features, predictDaily } from '../scripts/daily-model.mjs';
+import { direction, directions, features, predictDaily } from '../shared/daily-model.js';
 import { train } from './train.mjs';
 
 const text = await readFile(new URL('history.csv', import.meta.url), 'utf8');

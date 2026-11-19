@@ -1,30 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-
-const columnTitles = {
-  trade_date: '交易日',
-  stock_id: '股票代號',
-  forecast_close: '預測收盤價',
-  forecast_at: '預測時間',
-  actual_close: '實際收盤價',
-  actual_recorded_at: '收盤價取得時間',
-  model_version: '策略版本',
-  previous_close: '昨收',
-  forecast_direction: '預測方向'
-};
-const columns = Object.keys(columnTitles);
-const header = Object.values(columnTitles).join(',');
-const oldColumns = columns.slice(0, 7);
-const oldHeader = oldColumns.map(key => columnTitles[key]).join(',');
-const legacyColumns = [
-  'trade_date', 'stock_id', 'forecast_close', 'forecast_at', 'history_through',
-  'previous_close', 'model_version', 'actual_close', 'actual_recorded_at', 'actual_source'
-];
-const legacyHeader = legacyColumns.join(',');
-
-function toDisplayTime(value) {
-  return value.replace(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})\+08:00$/, '$1 $2');
-}
+import { formatJSONToCSV, normalizeRecord, parseCSVToJSON } from '../shared/data-parser.js';
 
 export class MonthlyRecords {
   constructor(directory) {
@@ -38,31 +14,11 @@ export class MonthlyRecords {
     const filename = join(this.directory, `${month}.csv`);
     const text = await readFile(filename, 'utf8').catch((error) => {
       if (error.code !== 'ENOENT') throw error;
-      return '';
+      return null;
     });
     const rows = new Map();
-    if (text) {
-      const [first, ...lines] = text.replace(/^\uFEFF/, '').trimEnd().split(/\r?\n/);
-      const inputColumns = new Map([[header, columns], [oldHeader, oldColumns], [legacyHeader, legacyColumns]]).get(first);
-      if (!inputColumns) throw new Error(`Unexpected CSV header in ${filename}`);
-      const fieldPositions = columns.map((column) => inputColumns.indexOf(column));
-
-      for (const line of lines) {
-        const fields = line.split(',');
-        const [date, stock] = fields;
-        const key = `${date}:${stock}`;
-        if (fields.length !== inputColumns.length || !date.startsWith(`${month}-`) || rows.has(key)) {
-          throw new Error(`Invalid or duplicate row in ${filename}: ${key}`);
-        }
-        const row = Object.fromEntries(columns.map((column, index) => [column, fields[fieldPositions[index]] ?? '']));
-        for (const column of ['forecast_at', 'actual_recorded_at']) {
-          const converted = toDisplayTime(row[column]);
-          if (converted !== row[column]) this.changed.add(month);
-          row[column] = converted;
-        }
-        rows.set(key, row);
-      }
-      if (first === legacyHeader) this.changed.add(month);
+    if (text !== null) {
+      for (const row of parseCSVToJSON(text, month)) rows.set(row.trade_date + ':' + row.stock_id, row);
     }
     this.months.set(month, rows);
     return rows;
@@ -79,9 +35,8 @@ export class MonthlyRecords {
     const rows = await this.load(month);
     const key = `${date}:${stock}`;
     const oldRow = rows.get(key);
-    if (oldRow && Object.entries(values).every(([column, value]) => oldRow[column] === String(value))) return;
-    const row = { ...oldRow, trade_date: date, stock_id: stock };
-    for (const [column, value] of Object.entries(values)) row[column] = String(value);
+    const row = normalizeRecord({ ...oldRow, ...values, trade_date: date, stock_id: stock });
+    if (oldRow && Object.keys(row).every(key => oldRow[key] === row[key])) return;
     rows.set(key, row);
     this.changed.add(month);
   }
@@ -92,8 +47,7 @@ export class MonthlyRecords {
     for (const month of this.changed) {
       const filename = join(this.directory, `${month}.csv`);
       const sorted = [...this.months.get(month).entries()].sort(([a], [b]) => a.localeCompare(b));
-      const lines = sorted.map(([, row]) => columns.map((column) => row[column] ?? '').join(','));
-      await writeFile(`${filename}.tmp`, `${[header, ...lines].join('\n')}\n`);
+      await writeFile(filename + '.tmp', formatJSONToCSV(sorted.map(([, row]) => row), month));
       await rename(`${filename}.tmp`, filename);
     }
     this.changed.clear();

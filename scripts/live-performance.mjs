@@ -1,8 +1,9 @@
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { MonthlyRecords } from './price-tracking-records.mjs';
-import { onTimeForecast, validDate } from './daily-price-tracking.mjs';
+import { onTimeForecast } from '../shared/premarket.js';
+import { validDate } from '../shared/trading-calendar.js';
 import { readStart } from './taiex.mjs';
-import { direction, directions } from './daily-model.mjs';
+import { direction, isDirection } from '../shared/daily-model.js';
 import { isTradingDate, shiftDate, symbols, taipeiClock } from './price-tracking-market.mjs';
 
 export async function livePerformance(records, start, end, targets = symbols) {
@@ -27,7 +28,7 @@ export async function livePerformance(records, start, end, targets = symbols) {
       if (!(Number(row.previous_close) > 0)) continue;
       result.pct += 100 * error / Number(row.previous_close);
       result.normalized++;
-      if (!directions.includes(row.forecast_direction)) continue;
+      if (!isDirection(row.forecast_direction)) continue;
       result.classified++;
       if (direction(Number(row.actual_close) - Number(row.previous_close)) === row.forecast_direction) result.correct++;
     }

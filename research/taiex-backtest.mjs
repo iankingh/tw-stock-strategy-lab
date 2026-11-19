@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
-import { directions, direction, features, predictDaily } from '../scripts/daily-model.mjs';
+import { directions, direction, features, predictDaily } from '../shared/daily-model.js';
 import { loadArchive } from '../scripts/taiex.mjs';
 import { train } from './train.mjs';
 

@@ -1,22 +1,23 @@
+import { onTimeForecast } from '../shared/premarket.js';
 import { appendFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import indexParameters from './taiex-model-parameters.json' with { type: 'json' };
 import { barsThrough, readStart, activationDate, activationFile } from './taiex.mjs';
 import parameters from './daily-model-parameters.json' with { type: 'json' };
-import { directions, features, predictDaily } from './daily-model.mjs';
+import { features, predictDaily } from '../shared/daily-model.js';
 import { MonthlyRecords } from './price-tracking-records.mjs';
 import {
   finMindPrices, historicalTWSEClose, isTradingDate, latestTWSEPrices, previousTradingDate, shiftDate, symbols, taipeiClock
 } from './price-tracking-market.mjs';
 
+import { validDate } from '../shared/trading-calendar.js';
+
+export { onTimeForecast, validDate };
+
 const recordsDirectory = fileURLToPath(new URL('../data/daily-price-tracking', import.meta.url));
 const indexStart = await readStart();
 export function trackingSymbols(date, start = indexStart) {
   return start && date >= start ? [...symbols, 'TAIEX'] : symbols;
-}
-
-export function validDate(date) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(date)) && shiftDate(date, 0) === date;
 }
 
 async function forecastFor(stock, previous, persist) {
@@ -100,7 +101,7 @@ async function officialCloses(date, targets, preferLatest, allowFinMind, persist
 async function missingForecasts(records, date, start) {
   const targets = [];
   for (const stock of trackingSymbols(date, start)) {
-    if (!(await records.get(date, stock))?.forecast_close) targets.push(stock);
+    if (!onTimeForecast(await records.get(date, stock), date)) targets.push(stock);
   }
   return targets;
 }
@@ -138,15 +139,6 @@ export async function runForecast(records, date, started, collect = collectForec
 async function summary(report) {
   console.log(report);
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, report + '\n');
-}
-
-export function onTimeForecast(row, date) {
-  if (!row || !(Number.isFinite(+row.forecast_close) && +row.forecast_close > 0)) return false;
-  const [day, time] = (row.forecast_at || '').split(' ');
-  if (day !== date || !/^0[6-8]:[0-5]\d:[0-5]\d$/.test(time)) return false;
-  if (row.stock_id !== 'TAIEX' && !row.model_version?.startsWith('daily-v2-')) return true;
-  if (row.stock_id === 'TAIEX' && !row.model_version?.startsWith('taiex-v1-')) return false;
-  return Number.isFinite(+row.previous_close) && +row.previous_close > 0 && directions.includes(row.forecast_direction);
 }
 
 async function auditForecasts(date, now, start = indexStart) {

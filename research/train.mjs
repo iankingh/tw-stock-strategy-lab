@@ -1,4 +1,4 @@
-import { directions } from '../scripts/daily-model.mjs';
+import { directions } from '../shared/daily-model.js';
 
 // 全批次梯度下降；四個標準化特徵，截距不懲罰。兩個任務固定 L2=0.1。
 export function train(samples) {

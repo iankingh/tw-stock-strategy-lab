@@ -1,10 +1,8 @@
-import { access, readFile, writeFile, rename } from 'node:fs/promises';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createRequire } from 'node:module';
+import { readFile, writeFile, rename } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
 import { isTradingDate, shiftDate, taipeiClock } from './price-tracking-market.mjs';
 
-const archive = new URL('../data/taiex.js', import.meta.url);
-const require = createRequire(import.meta.url);
+const archive = new URL('../data/taiex.json', import.meta.url);
 const fields = ['日期', '開盤指數', '最高指數', '最低指數', '收盤指數'];
 
 export function parseMonth(payload, month) {
@@ -26,10 +24,7 @@ export function parseMonth(payload, month) {
 }
 
 export async function loadArchive() {
-  const filename = fileURLToPath(archive);
-  await access(archive);
-  delete require.cache[filename];
-  return require(filename);
+  return JSON.parse(await readFile(archive, 'utf8'));
 }
 
 async function fetchMonth(month) {
@@ -51,9 +46,9 @@ export async function updateArchive(start, end, persist = true) {
   }
   const bars = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
   if (!persist) return bars;
-  const tmp = new URL('taiex.js.tmp', archive);
+  const tmp = new URL('taiex.json.tmp', archive);
   const rows = bars.map(bar => JSON.stringify(bar)).join(',\n');
-  await writeFile(tmp, '(function (bars) {\n  if (typeof module === "object" && module.exports) module.exports = bars;\n  else window.taiexHistory = bars;\n})([\n' + rows + '\n]);\n');
+  await writeFile(tmp, '[\n' + rows + '\n]\n');
   await rename(tmp, archive);
   return bars;
 }

@@ -2,11 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
-import calendar from '../trading-calendar.js';
-import scenario from '../forecast-model.js';
+import * as calendar from '../shared/trading-calendar.js';
+import { forecastClosePath } from '../shared/forecast-model.js';
+import { computeTechnicalIndicators, applyBaselineRule } from '../shared/indicators.js';
+import { findPremarketRecord } from '../shared/premarket.js';
+import { parseCSVToJSON } from '../shared/data-parser.js';
 
 const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
-const inline = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+const source = await readFile(new URL('../workstation.js', import.meta.url), 'utf8');
+const inline = source.replace(/^import .*?;$/gm, '');
 function workstation() {
   const elements = new Map();
   let download;
@@ -19,7 +23,8 @@ function workstation() {
     body: { appendChild() {}, removeChild() {} }
   };
   const ctx = vm.createContext({
-    window: { addEventListener() {}, stockForecastModel: scenario, twseTradingCalendar: calendar },
+    window: { addEventListener() {} }, calendar, forecastClosePath, computeTechnicalIndicators, applyBaselineRule,
+    findPremarketRecord, parseCSVToJSON,
     document, Blob, setTimeout() {},
     URL: { createObjectURL(blob) { download = blob; }, revokeObjectURL() {} }
   });
@@ -81,7 +86,7 @@ test('盤前顯示只使用當日同一檔股票的有效紀錄，也可讀取�
     '2026-11-17,3481,35.3,2026-11-17 07:05:00,,,,35.3,跌',
     '2026-11-17,2330,2200,2026-11-17 11:15:00,,,,2200,平'
   ].join('\r\n');
-  const read = (date, code) => JSON.parse(vm.runInContext(`JSON.stringify(findPremarketRecord(readDailyRecords(csv), '${date}', '${code}'))`, ctx));
+  const read = (date, code) => JSON.parse(vm.runInContext(`JSON.stringify(findPremarketRecord(parseCSVToJSON(csv), '${date}', '${code}'))`, ctx));
   assert.deepEqual(read('2026-11-17', '3481'), { price: 35.3, time: '07:05:00', direction: '跌' });
   assert.equal(read('2026-11-17', '2330'), null);
   assert.equal(read('2026-11-18', '3481'), null);
@@ -100,7 +105,7 @@ test('最新收盤採指定股票最新實際價格，與盤前預估及手動�
     ];
     state.chartData = [{ date: '2026/11/16', close: 100, changePct: 10, source: 'manual' }];
     state.currentBarIndex = 0;
-    const rows = readDailyRecords([
+    const rows = parseCSVToJSON([
       '交易日,股票代號,預測收盤價,預測時間,實際收盤價,昨收',
       '2026-11-17,3481,39.1,2026-11-17 07:00:00,35.3,36.3',
       '2026-11-17,2330,2230,2026-11-17 07:00:00,2235,2215',
@@ -156,10 +161,10 @@ test('台灣跨月午夜的交易日、星期及 JSON 時間一致', async () =>
   assert.equal(clock.hour, 0);
   assert.equal(new Date(clock.iso).getTime(), instant.getTime());
   const app = workstation();
-  app.ctx.window.twseTradingCalendar = { ...calendar, taipeiClock: (time = instant) => calendar.taipeiClock(time) };
+  app.ctx.calendar = { ...calendar, taipeiClock: (time = instant) => calendar.taipeiClock(time) };
   for (const input of ['2026-11-30T16:00:00.123Z', '2026-11-30T08:00:00-08:00', '2026-12-01 00:00:00', '2026/12/1']) {
     app.ctx.input = input;
-    assert.equal(vm.runInContext('getDateWithWeekday(input)', app.ctx), '2026/12/01 (週二)');
+    assert.equal(vm.runInContext('calendar.getDateWithWeekday(input)', app.ctx), '2026/12/01 (週二)');
   }
   app.ctx.bars = app.chart([100], 20);
   vm.runInContext('state.chartData = bars; state.currentBarIndex = 0; exportStrategyJSON()', app.ctx);

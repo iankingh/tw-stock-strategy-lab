@@ -1,4 +1,4 @@
-import tradingCalendar from '../trading-calendar.js';
+import * as tradingCalendar from '../shared/trading-calendar.js';
 
 export const symbols = ['2312', '2317', '2330', '2603', '3231', '3481'];
 

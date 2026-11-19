@@ -5,16 +5,19 @@
 ## 如何開啟工作站
 
 - **線上開啟**　[前往台股策略實驗室](https://iankingh.github.io/tw-stock-strategy-lab/)。
-- **本機開啟**　從 GitHub 的 **Code → Download ZIP** 下載並解壓縮，用瀏覽器開啟裡面的 `index.html`。[下載專案 ZIP](https://github.com/iankingh/tw-stock-strategy-lab/archive/refs/heads/main.zip)
+- **本機開啟**　從 GitHub 的 **Code → Download ZIP** 下載並解壓縮，在專案目錄執行 `python3 -m http.server 8000`，開啟 [本機工作站](http://localhost:8000/)。[下載專案 ZIP](https://github.com/iankingh/tw-stock-strategy-lab/archive/refs/heads/main.zip)
 
-也可以用 Git 下載原始碼，然後用瀏覽器開啟 [`index.html`](index.html)。
+也可以用 Git 下載並啟動本機工作站。
 
 ```sh
 git clone https://github.com/iankingh/tw-stock-strategy-lab.git
 cd tw-stock-strategy-lab
+python3 -m http.server 8000
 ```
 
-工作站使用原生 JavaScript、SVG 和 Tailwind CSS CDN。請保留解壓後的目錄結構，首頁會從 `data/taiex.js` 載入證交所大盤日 K。Tailwind CSS、Google Fonts 和 FinMind 日 K 資料會透過網路載入。
+工作站使用原生 JavaScript、SVG 和 Tailwind CSS CDN。請保留解壓後的目錄結構，首頁會從 `data/taiex.json` 載入證交所大盤日 K。Tailwind CSS、Google Fonts 和 FinMind 日 K 資料會透過網路載入。
+
+網頁與 Node.js 排程直接匯入 [共用 ESM 模組](shared/)。每日 CSV 的解析與寫回使用同一份欄位定義，價格缺值在程式內以 `null` 表示，寫回 CSV 時留白。正式盤前紀錄的預估收盤與方向各自計分；44 日路徑供圖表教學使用。
 
 ## 操作方式
 
@@ -71,7 +74,7 @@ GitHub 可能延遲建立排程事件。「台股盤前與收盤備援」另在 
 
 在 GitHub Actions 的「台股每日股價紀錄」可選 **Run workflow**。`audit` 可指定交易日，唯讀檢查已記錄的盤前預測。`verify` 用已收盤的交易日檢查資料來源和預測計算，`retry` 可指定交易日補抓收盤價。
 
-工作站和排程共用 `trading-calendar.js` 裡的證交所日曆，目前涵蓋 2026、2027 年。證交所公布新年度日曆或調整開休市日期時，在檔案中更新該年的 `open` 與 `closed` 清單，日期使用 `MM-DD`。列出的例外優先於平日及週末規則。排程遇到尚未收錄的年份時會查詢證交所 API。
+工作站和排程共用 `shared/trading-calendar.js` 裡的證交所日曆，目前涵蓋 2026、2027 年。證交所公布新年度日曆或調整開休市日期時，在檔案中更新該年的 `open` 與 `closed` 清單，日期使用 `MM-DD`。列出的例外優先於平日及週末規則。排程遇到尚未收錄的年份時會查詢證交所 API。
 
 [證交所交易日曆](https://www.twse.com.tw/zh/trading/holiday.html) · [證交所日成交資訊](https://www.twse.com.tw/zh/trading/historical/stock-day.html) · [FinMind 日成交資訊](https://finmind.github.io/tutor/TaiwanMarket/Technical/) · [GitHub Actions 排程說明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
 

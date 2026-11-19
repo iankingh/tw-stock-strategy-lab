@@ -90,7 +90,7 @@ jobs:
         if: ${{ !cancelled() && inputs.mode != 'verify' }}
         run: |
           if [ ! -d data/daily-price-tracking ]; then exit 0; fi
-          git add -- data/daily-price-tracking data/taiex.js
+          git add -- data/daily-price-tracking data/taiex.json
           if [ -f data/taiex-start.txt ]; then git add -- data/taiex-start.txt; fi
           if git diff --cached --quiet; then exit 0; fi
           git config user.name 'github-actions[bot]'

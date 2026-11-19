@@ -25,9 +25,9 @@ test('讀取舊中英文 CSV，新版更新保留價格、時間及既有昨收'
   await records.save();
   const disk = new MonthlyRecords(records.directory);
   const old = await disk.get('2026-10-30', '2330');
-  assert.deepEqual([old.forecast_close, old.forecast_at, old.previous_close, old.forecast_direction], ['41', '2026-10-30 07:00:00', '40', '']);
+  assert.deepEqual([old.forecast_close, old.forecast_at, old.previous_close, old.forecast_direction], [41, '2026-10-30 07:00:00', 40, null]);
   const recent = await disk.get('2026-11-02', '2330');
-  assert.deepEqual([recent.forecast_close, recent.forecast_direction, recent.previous_close], ['42', '', '']);
+  assert.deepEqual([recent.forecast_close, recent.forecast_direction, recent.previous_close], [42, null, null]);
   assert.ok(onTimeForecast(recent, '2026-11-02'));
 });
 
@@ -49,7 +49,7 @@ test('補抓可跨月；部分收盤先落盤、列出缺漏；重跑只補缺�
   await assert.rejects(checkCloses(disk, dates), /2 筆/);
   const summary = await readFile(file, 'utf8');
   for (const date of [oldDate, today]) assert.ok(summary.includes(date + ' 2330'));
-  assert.equal((await disk.get(today, '2317')).actual_close, '101');
+  assert.equal((await disk.get(today, '2317')).actual_close, 101);
   assert.equal(await disk.get(oldDate, '2317'), undefined);
   const remaining = [];
   const all = async (date, stocks) => stocks.map(stock => { remaining.push(stock); return [stock, { actual_close: '102' }]; });
@@ -57,7 +57,7 @@ test('補抓可跨月；部分收盤先落盤、列出缺漏；重跑只補缺�
   await disk.save();
   assert.deepEqual(remaining, ['2330', '2330']);
   await checkCloses(new MonthlyRecords(disk.directory), dates);
-  assert.equal((await disk.get(oldDate, '2330')).forecast_close, '100');
+  assert.equal((await disk.get(oldDate, '2330')).forecast_close, 100);
 });
 
 test('正式預測採用截至昨收的日 K，補跑不覆寫，逾時與資料不齊留空', async t => {
@@ -83,7 +83,7 @@ test('正式預測採用截至昨收的日 K，補跑不覆寫，逾時與資料
   await runForecast(records, day, early, undefined, () => early);
   assert.equal(await records.get(day, '2312'), undefined);
   const first = await records.get(day, '2330');
-  assert.equal(first.previous_close, '2215.00');
+  assert.equal(first.previous_close, 2215);
   assert.equal(first.model_version, parameters.version);
   assert.ok(onTimeForecast(first, day));
   assert.equal(onTimeForecast({ ...first, forecast_direction: '' }, day), false);
@@ -128,10 +128,10 @@ test('夜間排程延到盤前時只補當天缺檔，休市、盤外及全數�
   assert.equal(await check(7, '2026-11-21'), null);
   assert.equal(await check(8, '2026-12-25'), null);
   assert.equal(await check(7), date);
-  for (const stock of symbols) await records.update(date, stock, { forecast_close: '100' });
+  for (const stock of symbols) await records.update(date, stock, { forecast_close: 100, forecast_at: date + ' 07:00:00' });
   await records.update('2026-11-18', 'TAIEX', { forecast_close: '39000' });
   assert.equal(await check(8), date);
-  await records.update(date, 'TAIEX', { forecast_close: '40194.91' });
+  await records.update(date, 'TAIEX', { forecast_close: 40194.91, previous_close: 40194.91, forecast_at: date + ' 07:10:00', forecast_direction: '漲', model_version: 'taiex-v1-test' });
   assert.equal(await check(8), null);
 });
 

@@ -2,7 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { onTimeForecast, trackingSymbols } from './daily-price-tracking.mjs';
+import { onTimeForecast } from '../shared/premarket.js';
+import { trackingSymbols } from './daily-price-tracking.mjs';
 import { isTradingDate, shiftDate, taipeiClock } from './price-tracking-market.mjs';
 import { MonthlyRecords } from './price-tracking-records.mjs';
 
