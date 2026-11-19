@@ -139,7 +139,7 @@ test('收盤備援從 17 時起檢查，跨月及休市追前一交易日，包�
   const records = await tempRecords(t);
   const date = '2026-11-30';
   const check = (day, hour) => closeRecoveryDate(records, { date: day, hour }, date);
-  assert.equal(await check(date, 16), null);
+  assert.equal(await check(date, 16), '2026-11-27');
   assert.equal(await check(date, 17), date);
   for (const stock of symbols) await records.update(date, stock, { actual_close: '100' });
   assert.equal(await check('2026-12-01', 0), date);

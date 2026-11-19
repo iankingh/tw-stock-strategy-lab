@@ -1,6 +1,10 @@
 name: 台股盤前與收盤備援
 
 on:
+  workflow_run:
+    workflows: [台股每日股價紀錄]
+    types: [completed]
+    branches: [main]
   schedule:
     # 隔夜每小時一次，即使 GitHub 延後數小時建立事件，抵達盤前仍可補跑。
     - cron: '43 0-6,22-23 * * *'

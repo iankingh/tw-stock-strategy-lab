@@ -1,0 +1,56 @@
+name: 行情異常稽核
+
+on:
+  workflow_run:
+    workflows: [台股每日股價紀錄, 台股盤前與收盤備援]
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: '37 8,10,18,20,23 * * *'
+      timezone: Asia/Taipei
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: tracking-incidents
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TZ: Asia/Taipei
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: 比對應執行排程、Actions 結果與行情 CSV
+        id: inspect
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/tracking-incidents.mjs
+      - name: 儲存異常紀錄與檢查進度
+        run: |
+          git add -- data/tracking-incidents
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'data: 保存行情異常紀錄與稽核進度'
+          if ! git push origin HEAD:main; then
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+      - name: 標示本次新發現的缺漏
+        if: steps.inspect.outputs.new_gaps != '0'
+        run: |
+          echo '::error::發現尚未執行的排程或未補齊的行情，詳見每月異常紀錄。'
+          exit 1

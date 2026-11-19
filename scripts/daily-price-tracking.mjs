@@ -184,7 +184,7 @@ function hasClose(row) {
 }
 
 export async function closeRecoveryDate(records, now, start = indexStart) {
-  if (now.hour >= 7 && now.hour < 17) return null;
+  if (now.hour >= 7 && now.hour < 9) return null;
   const date = now.hour >= 17 && await isTradingDate(now.date)
     ? now.date : await previousTradingDate(now.date);
   for (const symbol of trackingSymbols(date, start)) {
@@ -269,9 +269,7 @@ async function main(mode, requestedDate, option) {
     throw new Error('Forecasts can only be recorded on their target trading date');
   }
   if (mode !== 'forecast' && date === now.date && now.hour < 17) {
-    if (mode === 'retry') throw new Error('當日收盤補抓於台灣時間 17:00 後開放');
-    console.warn('Today’s closing prices are collected from 17:00 Taiwan time');
-    return;
+    throw new Error('當日收盤價於台灣時間 17:00 後開放');
   }
 
   const isOpen = await isTradingDate(date);
@@ -293,8 +291,14 @@ async function main(mode, requestedDate, option) {
   const records = new MonthlyRecords(recordsDirectory);
   if (mode === 'forecast') {
     await runForecast(records, date, now);
+    await records.save();
+    const missing = await missingForecasts(records, date);
+    if (missing.length) throw new Error(`${date} 盤前預測待補：${missing.join('、')}`);
+    return;
   } else if (mode === 'close') {
     await runClose(records, date, now.date, date < now.date);
+    await records.save();
+    return checkCloses(records, [{ date, pendingOnly: false }]);
   } else {
     const dates = await retryDates(date, !requestedDate);
     for (const target of dates) await runClose(records, target.date, now.date, true, target.pendingOnly);
@@ -305,12 +309,11 @@ async function main(mode, requestedDate, option) {
     }
     return checkCloses(records, dates);
   }
-  await records.save();
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await main(...process.argv.slice(2)).catch(async error => {
-    await summary(error.message);
+    await summary('行情工作失敗：' + error.message.replace(/\s+/g, ' ').slice(0, 400));
     process.exitCode = 1;
   });
 }
