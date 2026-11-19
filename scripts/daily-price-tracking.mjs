@@ -183,6 +183,16 @@ function hasClose(row) {
   return Number.isFinite(price) && price > 0;
 }
 
+export async function closeRecoveryDate(records, now, start = indexStart) {
+  if (now.hour >= 7 && now.hour < 17) return null;
+  const date = now.hour >= 17 && await isTradingDate(now.date)
+    ? now.date : await previousTradingDate(now.date);
+  for (const symbol of trackingSymbols(date, start)) {
+    if (!hasClose(await records.get(date, symbol))) return date;
+  }
+  return null;
+}
+
 export async function runClose(records, date, today, allowFinMind, pendingOnly = false, collect = officialCloses, start = indexStart) {
   const missing = [];
   for (const stock of trackingSymbols(date, start)) {
@@ -229,9 +239,13 @@ export function closeScheduleDate(now, schedule) {
 async function main(mode, requestedDate, option) {
   if (mode === 'check-recovery') {
     const now = taipeiClock();
-    const date = await recoveryDate(new MonthlyRecords(recordsDirectory), now);
-    await summary(`盤前備援檢查（台灣）${now.timestamp}，${date ? '有缺漏，啟動補跑' : '無需補跑'}。`);
-    if (date && process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `trade_date=${date}\n`);
+    const records = new MonthlyRecords(recordsDirectory);
+    const premarket = now.hour >= 7 && now.hour < 9;
+    const date = premarket ? await recoveryDate(records, now) : await closeRecoveryDate(records, now);
+    await summary(`行情備援檢查（台灣）${now.timestamp}，${date ? date + (premarket ? ' 缺盤前預測' : ' 缺收盤價') : '無需補跑'}。`);
+    if (date && process.env.GITHUB_OUTPUT) {
+      await appendFile(process.env.GITHUB_OUTPUT, `trade_date=${date}\nmode=${premarket ? 'forecast' : 'retry'}\n`);
+    }
     return;
   }
   if (mode === 'activate-index') {
