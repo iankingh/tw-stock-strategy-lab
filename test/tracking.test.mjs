@@ -4,7 +4,9 @@ import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MonthlyRecords } from '../scripts/price-tracking-records.mjs';
-import { onTimeForecast, runForecast, runClose, retryDates, checkCloses, closeScheduleDate, recoveryDate, closeRecoveryDate } from '../scripts/daily-price-tracking.mjs';
+import { onTimeForecast, runForecast, runClose, retryDates, checkCloses, closeScheduleDate, recoveryTask } from '../scripts/daily-price-tracking.mjs';
+import { findPremarketRecord } from '../shared/premarket.js';
+import { taipeiClock } from '../shared/trading-calendar.js';
 import { symbols } from '../scripts/price-tracking-market.mjs';
 import { livePerformance } from '../scripts/live-performance.mjs';
 import parameters from '../scripts/daily-model-parameters.json' with { type: 'json' };
@@ -63,8 +65,9 @@ test('補抓可跨月；部分收盤先落盤、列出缺漏；重跑只補缺�
 test('正式預測採用截至昨收的日 K，補跑不覆寫，逾時與資料不齊留空', async t => {
   const records = await tempRecords(t);
   const day = '2026-11-17';
-  const early = { date: day, hour: 7, timestamp: day + ' 07:00:02' };
-  const late = { date: day, hour: 9, timestamp: day + ' 09:00:01' };
+  const clock = time => taipeiClock(new Date(`${day}T${time}+08:00`));
+  const early = clock('06:27:24');
+  const late = clock('09:00:00');
   const input = (await readFile(new URL('../research/history.csv', import.meta.url), 'utf8')).trim().split('\n').slice(1);
   let staleStock = '2312';
   let fetches = 0;
@@ -78,22 +81,29 @@ test('正式預測採用截至昨收的日 K，補跑不覆寫，逾時與資料
   });
   await assert.rejects(runForecast(records, day, late), /outside/);
   assert.equal(fetches, 0);
-  await assert.rejects(runForecast(records, day, early, undefined, () => late), /finished after/);
+  await assert.rejects(runForecast(records, day, clock('08:59:59'), undefined, () => late), /finished outside.*09:00:00/);
   assert.equal(await records.get(day, '2330'), undefined);
-  await runForecast(records, day, early, undefined, () => early);
-  assert.equal(await records.get(day, '2312'), undefined);
-  const first = await records.get(day, '2330');
+  const file = join(records.directory, 'summary.md');
+  const previousSummary = process.env.GITHUB_STEP_SUMMARY;
+  process.env.GITHUB_STEP_SUMMARY = file;
+  t.after(() => { if (previousSummary === undefined) delete process.env.GITHUB_STEP_SUMMARY; else process.env.GITHUB_STEP_SUMMARY = previousSummary; });
+  await assert.rejects(runForecast(records, day, early, undefined, () => early), /盤前預測待補：2312$/);
+  assert.match(await readFile(file, 'utf8'), /2312（FinMind）：needs 21 daily records through 2026-11-16/);
+  const disk = new MonthlyRecords(records.directory);
+  assert.equal(await disk.get(day, '2312'), undefined);
+  const first = await disk.get(day, '2330');
   assert.equal(first.previous_close, 2215);
   assert.equal(first.model_version, parameters.version);
   assert.ok(onTimeForecast(first, day));
   assert.equal(onTimeForecast({ ...first, forecast_direction: '' }, day), false);
   staleStock = '';
-  await runForecast(records, day, early, undefined, () => ({ ...early, timestamp: day + ' 07:20:00' }));
-  await records.save();
-  assert.equal((await new MonthlyRecords(records.directory).get(day, '2330')).forecast_at, early.timestamp);
-  assert.equal((await records.get(day, '2312')).forecast_at, day + ' 07:20:00');
+  const beforeRetry = fetches;
+  await runForecast(disk, day, clock('07:20:00'), undefined, () => clock('07:20:00'));
+  assert.equal(fetches - beforeRetry, 1);
+  assert.deepEqual(await new MonthlyRecords(records.directory).get(day, '2330'), first);
+  assert.equal((await disk.get(day, '2312')).forecast_at, day + ' 07:20:00');
   const calls = fetches;
-  await runForecast(records, day, late);
+  await runForecast(disk, day, late);
   assert.equal(fetches, calls);
 });
 
@@ -120,17 +130,45 @@ test('準時率包含全日缺席，價差與方向只計入已配對的實盤�
   });
 });
 
-test('夜間排程延到盤前時只補當天缺檔，休市、盤外及全數完成均跳過', async t => {
+test('11 月 20 日備援、正式寫入與網頁讀取共用 06:00 含至 09:00 不含的界線', async t => {
+  const day = '2026-11-20';
+  const all = [...symbols, 'TAIEX'];
+  for (const [time, eligible] of [['05:59:59', false], ['06:00:00', true], ['06:27:24', true], ['08:59:59', true], ['09:00:00', false]]) {
+    const records = await tempRecords(t);
+    const now = taipeiClock(new Date(`${day}T${time}+08:00`));
+    const task = await recoveryTask(records, now);
+    assert.deepEqual(task, { mode: eligible ? 'forecast' : 'retry', date: eligible ? day : '2026-11-19', missing: all });
+    const values = { previous_close: 100, forecast_close: 100, forecast_direction: '漲', model_version: 'daily-test' };
+    const row = { ...values, trade_date: day, stock_id: '2330', forecast_at: now.timestamp };
+    assert.equal(onTimeForecast(row, day), eligible);
+    assert.deepEqual(findPremarketRecord([row], day, '2330'), eligible ? { price: 100, time, direction: '漲' } : null);
+    const collect = t.mock.fn(async (_, targets) => targets.map(id => [id, {
+      ...values, model_version: id === 'TAIEX' ? 'taiex-v1-test' : values.model_version
+    }]));
+    const attempt = runForecast(records, day, now, collect, () => now);
+    if (eligible) {
+      await attempt;
+      assert.deepEqual(collect.mock.calls[0].arguments[1], all);
+      assert.equal((await records.get(day, 'TAIEX')).forecast_at, now.timestamp);
+      assert.equal(await recoveryTask(records, now), null);
+    } else {
+      await assert.rejects(attempt, /outside/);
+      assert.equal(collect.mock.callCount(), 0);
+      assert.equal(await records.get(day, 'TAIEX'), undefined);
+    }
+  }
+});
+
+test('夜間排程延到盤前時只補當天缺檔，休市及全數完成均跳過', async t => {
   const records = await tempRecords(t);
   const date = '2026-11-19';
-  const check = (hour, day = date) => recoveryDate(records, { date: day, hour }, date);
-  for (const hour of [0, 6, 9, 17, 23]) assert.equal(await check(hour), null);
+  const check = (hour, day = date) => recoveryTask(records, { date: day, hour }, date);
   assert.equal(await check(7, '2026-11-21'), null);
   assert.equal(await check(8, '2026-12-25'), null);
-  assert.equal(await check(7), date);
+  assert.deepEqual((await check(7)).missing, [...symbols, 'TAIEX']);
   for (const stock of symbols) await records.update(date, stock, { forecast_close: 100, forecast_at: date + ' 07:00:00' });
   await records.update('2026-11-18', 'TAIEX', { forecast_close: '39000' });
-  assert.equal(await check(8), date);
+  assert.deepEqual(await check(8), { mode: 'forecast', date, missing: ['TAIEX'] });
   await records.update(date, 'TAIEX', { forecast_close: 40194.91, previous_close: 40194.91, forecast_at: date + ' 07:10:00', forecast_direction: '漲', model_version: 'taiex-v1-test' });
   assert.equal(await check(8), null);
 });
@@ -138,16 +176,15 @@ test('夜間排程延到盤前時只補當天缺檔，休市、盤外及全數�
 test('收盤備援從 17 時起檢查，跨月及休市追前一交易日，包含大盤且補齊後跳過', async t => {
   const records = await tempRecords(t);
   const date = '2026-11-30';
-  const check = (day, hour) => closeRecoveryDate(records, { date: day, hour }, date);
+  const check = async (day, hour) => (await recoveryTask(records, { date: day, hour }, date))?.date ?? null;
   assert.equal(await check(date, 16), '2026-11-27');
   assert.equal(await check(date, 17), date);
   for (const stock of symbols) await records.update(date, stock, { actual_close: '100' });
   assert.equal(await check('2026-12-01', 0), date);
   await records.update(date, 'TAIEX', { actual_close: '0' });
-  assert.equal(await check('2026-12-01', 6), date);
-  assert.equal(await check('2026-12-01', 7), null);
+  assert.equal(await check('2026-12-01', 5), date);
   await records.update(date, 'TAIEX', { actual_close: '39000' });
-  assert.equal(await check('2026-12-01', 6), null);
+  assert.equal(await check('2026-12-01', 5), null);
   assert.equal(await check(date, 23), null);
   assert.equal(await check('2026-12-26', 18), '2026-12-24');
 });

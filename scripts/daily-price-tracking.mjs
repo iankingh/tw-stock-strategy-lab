@@ -1,4 +1,4 @@
-import { onTimeForecast } from '../shared/premarket.js';
+import { isPremarketHour, onTimeForecast } from '../shared/premarket.js';
 import { appendFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import indexParameters from './taiex-model-parameters.json' with { type: 'json' };
@@ -44,12 +44,15 @@ async function collectForecasts(date, targets, persist = true) {
   if (!targets.length) return [];
   const previous = await previousTradingDate(date);
   const results = await Promise.allSettled(targets.map((symbol) => forecastFor(symbol, previous, persist)));
-  return results.flatMap((result, index) => {
-    const stock = targets[index];
-    if (result.status === 'fulfilled') return [[stock, result.value]];
-    console.warn(`${date} ${stock} forecast unavailable: ${result.reason.message}`);
-    return [];
-  });
+  const forecasts = [];
+  const errors = [];
+  for (const [i, result] of results.entries()) {
+    const stock = targets[i];
+    if (result.status === 'fulfilled') forecasts.push([stock, result.value]);
+    else errors.push(`- ${stock}（${stock === 'TAIEX' ? '證交所大盤日 K' : 'FinMind'}）：${result.reason.message}`);
+  }
+  if (errors.length) await summary(`${date} 盤前行情或預測計算失敗\n\n${errors.join('\n')}\n`);
+  return forecasts;
 }
 
 async function officialCloses(date, targets, preferLatest, allowFinMind, persist = true) {
@@ -107,10 +110,19 @@ async function missingForecasts(records, date, start) {
 }
 
 // 以 runner 真正啟動時的台灣日期判斷，允許延遲的夜間事件救回當日盤前預測。
-export async function recoveryDate(records, now, start = indexStart) {
-  if (now.hour < 7 || now.hour >= 9 || !await isTradingDate(now.date)) return null;
-  const missing = await missingForecasts(records, now.date, start);
-  return missing.length ? now.date : null;
+export async function recoveryTask(records, now, start = indexStart) {
+  if (isPremarketHour(now.hour)) {
+    if (!await isTradingDate(now.date)) return null;
+    const missing = await missingForecasts(records, now.date, start);
+    return missing.length ? { mode: 'forecast', date: now.date, missing } : null;
+  }
+  const date = now.hour >= 17 && await isTradingDate(now.date)
+    ? now.date : await previousTradingDate(now.date);
+  const missing = [];
+  for (const symbol of trackingSymbols(date, start)) {
+    if (!hasClose(await records.get(date, symbol))) missing.push(symbol);
+  }
+  return missing.length ? { mode: 'retry', date, missing } : null;
 }
 
 export async function runForecast(records, date, started, collect = collectForecasts, clock = taipeiClock, start = indexStart) {
@@ -119,21 +131,22 @@ export async function runForecast(records, date, started, collect = collectForec
     console.log(`${date}: all forecasts already recorded`);
     return;
   }
-  if (started.hour < 6 || started.hour >= 9) {
-    throw new Error(`${date}: ${targets.length} forecasts missing; job started at ${started.timestamp}, outside the 06:00–09:00 Taiwan pre-market window`);
+  await summary(`${date} 盤前預測待補：${targets.join('、')}`);
+  if (started.date !== date || !isPremarketHour(started.hour)) {
+    throw new Error(`${date}: job started at ${started.timestamp}, outside the 06:00–09:00 Taiwan pre-market window`);
   }
   const forecasts = await collect(date, targets);
   const recorded = clock();
-  if (recorded.date !== date || recorded.hour >= 9) {
-    throw new Error(`${date}: forecast calculation finished after the pre-market window`);
+  if (recorded.date !== date || !isPremarketHour(recorded.hour)) {
+    throw new Error(`${date}: forecast calculation finished outside the pre-market window at ${recorded.timestamp}`);
   }
-  if (!forecasts.length) throw new Error(`${date}: no forecast could be recorded`);
   for (const [stock, values] of forecasts) {
     await records.update(date, stock, { ...values, forecast_at: recorded.timestamp });
   }
-  const completed = new Set(forecasts.map(([stock]) => stock));
-  const missing = targets.filter(stock => !completed.has(stock));
-  await summary(`${date} 新增 ${forecasts.length} 筆盤前預測。${missing.length ? '行情或計算缺漏：' + missing.join('、') : ''}`);
+  await records.save();
+  await summary(`${date} 新增 ${forecasts.length} 筆盤前預測。`);
+  const missing = await missingForecasts(records, date, start);
+  if (missing.length) throw new Error(`${date} 盤前預測待補：${missing.join('、')}`);
 }
 
 async function summary(report) {
@@ -173,16 +186,6 @@ async function auditForecasts(date, now, start = indexStart) {
 function hasClose(row) {
   const price = Number(row?.actual_close);
   return Number.isFinite(price) && price > 0;
-}
-
-export async function closeRecoveryDate(records, now, start = indexStart) {
-  if (now.hour >= 7 && now.hour < 9) return null;
-  const date = now.hour >= 17 && await isTradingDate(now.date)
-    ? now.date : await previousTradingDate(now.date);
-  for (const symbol of trackingSymbols(date, start)) {
-    if (!hasClose(await records.get(date, symbol))) return date;
-  }
-  return null;
 }
 
 export async function runClose(records, date, today, allowFinMind, pendingOnly = false, collect = officialCloses, start = indexStart) {
@@ -232,11 +235,12 @@ async function main(mode, requestedDate, option) {
   if (mode === 'check-recovery') {
     const now = taipeiClock();
     const records = new MonthlyRecords(recordsDirectory);
-    const premarket = now.hour >= 7 && now.hour < 9;
-    const date = premarket ? await recoveryDate(records, now) : await closeRecoveryDate(records, now);
-    await summary(`行情備援檢查（台灣）${now.timestamp}，${date ? date + (premarket ? ' 缺盤前預測' : ' 缺收盤價') : '無需補跑'}。`);
-    if (date && process.env.GITHUB_OUTPUT) {
-      await appendFile(process.env.GITHUB_OUTPUT, `trade_date=${date}\nmode=${premarket ? 'forecast' : 'retry'}\n`);
+    await summary(`行情備援實際啟動時間（台灣）：${now.timestamp}`);
+    const task = await recoveryTask(records, now);
+    if (!task) return summary('無需補跑。');
+    await summary(`${task.date} 缺${task.mode === 'forecast' ? '盤前預測' : '收盤價'}：${task.missing.join('、')}。`);
+    if (process.env.GITHUB_OUTPUT) {
+      await appendFile(process.env.GITHUB_OUTPUT, `trade_date=${task.date}\nmode=${task.mode}\n`);
     }
     return;
   }
@@ -256,7 +260,7 @@ async function main(mode, requestedDate, option) {
   if (!validDate(date) || date > now.date) throw new Error(`Invalid trading date: ${date}`);
   if (mode === 'audit') return auditForecasts(date, now);
   if (mode === 'check-close') return checkCloses(new MonthlyRecords(recordsDirectory), await retryDates(date, !requestedDate || option === '--backlog'));
-  if (mode === 'forecast') await summary(`盤前工作實際啟動時間（台灣）：${now.timestamp}`);
+  if (mode === 'forecast') await summary(`盤前工作實際啟動時間（台灣）：${now.timestamp}，目標交易日 ${date}。`);
   if (mode === 'forecast' && date !== now.date) {
     throw new Error('Forecasts can only be recorded on their target trading date');
   }
@@ -282,11 +286,7 @@ async function main(mode, requestedDate, option) {
 
   const records = new MonthlyRecords(recordsDirectory);
   if (mode === 'forecast') {
-    await runForecast(records, date, now);
-    await records.save();
-    const missing = await missingForecasts(records, date);
-    if (missing.length) throw new Error(`${date} 盤前預測待補：${missing.join('、')}`);
-    return;
+    return runForecast(records, date, now);
   } else if (mode === 'close') {
     await runClose(records, date, now.date, date < now.date);
     await records.save();
