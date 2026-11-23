@@ -1,4 +1,5 @@
-import { isPremarketHour, onTimeForecast } from '../shared/premarket.js';
+import { isPremarketHour, onTimeForecast, premarketStartHour } from '../shared/premarket.js';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { appendFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import indexParameters from './taiex-model-parameters.json' with { type: 'json' };
@@ -110,6 +111,26 @@ async function missingForecasts(records, date, start) {
 }
 
 // 以 runner 真正啟動時的台灣日期判斷，允許延遲的夜間事件救回當日盤前預測。
+export async function standbyDate(now) {
+  if (now.hour < premarketStartHour - 2 || now.hour >= premarketStartHour) return null;
+  return await isTradingDate(now.date) ? now.date : null;
+}
+
+export async function waitForPremarket(date, clock = taipeiClock, delay = sleep) {
+  const now = clock();
+  if (now.date !== date || !await isTradingDate(date)) throw new Error(`無法為 ${date} 待命：${now.timestamp}`);
+  if (now.hour < premarketStartHour) {
+    if (now.hour < premarketStartHour - 2) throw new Error(`尚未進入 ${date} 的清晨待命時段`);
+    const opening = Date.parse(`${date}T${String(premarketStartHour).padStart(2, '0')}:00:00+08:00`);
+    await summary(`${date} 清晨備援於台灣時間 ${now.timestamp} 待命，06:00 再檢查盤前預測。`);
+    await delay(Math.max(0, opening - Date.parse(now.iso)));
+  }
+  const wake = clock();
+  if (wake.date !== date || wake.hour < premarketStartHour) throw new Error(`${date} 待命結束時間異常：${wake.timestamp}`);
+  // 寫入工作會重新讀 main 與實際時鐘；逾時且仍有缺漏時會留下失敗紀錄。
+  await summary(`清晨備援於台灣時間 ${wake.timestamp} 結束待命，交由正式工作核對 ${date} 的七筆紀錄。`);
+}
+
 export async function recoveryTask(records, now, start = indexStart) {
   if (isPremarketHour(now.hour)) {
     if (!await isTradingDate(now.date)) return null;
@@ -232,12 +253,18 @@ export function closeScheduleDate(now, schedule) {
 }
 
 async function main(mode, requestedDate, option) {
+  if (mode === 'wait-for-premarket') return waitForPremarket(requestedDate);
   if (mode === 'check-recovery') {
     const now = taipeiClock();
     const records = new MonthlyRecords(recordsDirectory);
     await summary(`行情備援實際啟動時間（台灣）：${now.timestamp}`);
+    const standby = await standbyDate(now);
+    if (standby) {
+      await summary(`${standby} 已安排 06:00 清晨備援。`);
+      if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `standby_date=${standby}\n`);
+    }
     const task = await recoveryTask(records, now);
-    if (!task) return summary('無需補跑。');
+    if (!task) return summary(standby ? '目前無收盤價待補。' : '無需補跑。');
     await summary(`${task.date} 缺${task.mode === 'forecast' ? '盤前預測' : '收盤價'}：${task.missing.join('、')}。`);
     if (process.env.GITHUB_OUTPUT) {
       await appendFile(process.env.GITHUB_OUTPUT, `trade_date=${task.date}\nmode=${task.mode}\n`);

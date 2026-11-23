@@ -30,6 +30,7 @@ jobs:
     outputs:
       mode: ${{ steps.check.outputs.mode }}
       trade_date: ${{ steps.check.outputs.trade_date }}
+      standby_date: ${{ steps.check.outputs.standby_date }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -53,3 +54,36 @@ jobs:
     with:
       mode: ${{ needs.check.outputs.mode }}
       trade_date: ${{ needs.check.outputs.trade_date }}
+
+  standby:
+    needs: check
+    if: ${{ !cancelled() && needs.check.outputs.standby_date != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 130
+    concurrency:
+      group: premarket-standby-${{ needs.check.outputs.standby_date }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: 在 GitHub 等到台灣盤前時段
+        env:
+          TRADE_DATE: ${{ needs.check.outputs.standby_date }}
+        run: node scripts/daily-price-tracking.mjs wait-for-premarket "$TRADE_DATE"
+
+  forecast-after-standby:
+    needs: [check, standby]
+    if: ${{ !cancelled() && needs.standby.result == 'success' }}
+    permissions:
+      contents: write
+      pages: write
+    uses: ./.github/workflows/daily-price-tracking.yml
+    with:
+      mode: forecast
+      trade_date: ${{ needs.check.outputs.standby_date }}

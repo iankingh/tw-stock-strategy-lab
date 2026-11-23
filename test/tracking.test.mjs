@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MonthlyRecords } from '../scripts/price-tracking-records.mjs';
-import { onTimeForecast, runForecast, runClose, retryDates, checkCloses, closeScheduleDate, recoveryTask } from '../scripts/daily-price-tracking.mjs';
+import { onTimeForecast, runForecast, runClose, retryDates, checkCloses, closeScheduleDate, recoveryTask, standbyDate, waitForPremarket } from '../scripts/daily-price-tracking.mjs';
 import { findPremarketRecord } from '../shared/premarket.js';
 import { taipeiClock } from '../shared/trading-calendar.js';
 import { symbols } from '../scripts/price-tracking-market.mjs';
@@ -157,6 +157,42 @@ test('11 月 20 日備援、正式寫入與網頁讀取共用 06:00 含至 09:00
       assert.equal(await records.get(day, 'TAIEX'), undefined);
     }
   }
+});
+
+test('11 月 23 日 04:49:54 備援等到 06:00，即使下一輪排程 09:58 才到仍可交付', async t => {
+  const date = '2026-11-23';
+  const at = (time, day = date) => taipeiClock(new Date(`${day}T${time}+08:00`));
+  const records = await tempRecords(t);
+  let now = at('04:49:54');
+  assert.equal(await standbyDate(now), date);
+  assert.equal((await recoveryTask(records, now)).date, '2026-11-20');
+  const delay = async ms => { assert.equal(ms, 4_206_000); now = at('06:00:00'); };
+  await waitForPremarket(date, () => now, delay);
+  const task = await recoveryTask(records, now);
+  assert.deepEqual(task, { mode: 'forecast', date, missing: [...symbols, 'TAIEX'] });
+  await runForecast(records, date, now, async (_, targets) => targets.map(id => [id, {
+    previous_close: 10, forecast_close: 10, forecast_direction: '漲',
+    model_version: id === 'TAIEX' ? 'taiex-v1-test' : 'daily-test'
+  }]), () => now);
+  const saved = new MonthlyRecords(records.directory);
+  for (const id of task.missing) assert.equal((await saved.get(date, id)).forecast_at, now.timestamp);
+  await runForecast(saved, date, at('09:58:11'), () => assert.fail('已有七筆時不可重抓'));
+});
+
+test('清晨待命遵守交易日及兩小時上限，晚起時仍由寫入工作檢查截止', async t => {
+  const date = '2026-11-23';
+  const at = (time, day = date) => taipeiClock(new Date(`${day}T${time}+08:00`));
+  for (const time of ['03:59:59', '06:00:00', '09:58:11']) assert.equal(await standbyDate(at(time)), null);
+  for (const time of ['04:00:00', '05:59:59']) assert.equal(await standbyDate(at(time)), date);
+  assert.equal(await standbyDate(at('04:49:54', '2026-11-22')), null);
+  const never = () => assert.fail('此情境不可等待');
+  await assert.rejects(waitForPremarket(date, () => at('03:59:59'), never), /尚未進入/);
+  await assert.rejects(waitForPremarket(date, () => at('06:01:00', '2026-11-24'), never), /無法為/);
+  const late = at('09:58:11');
+  await waitForPremarket(date, () => late, never);
+  const records = await tempRecords(t);
+  await assert.rejects(runForecast(records, date, late, never), /outside/);
+  assert.equal(await records.get(date, 'TAIEX'), undefined);
 });
 
 test('夜間排程延到盤前時只補當天缺檔，休市及全數完成均跳過', async t => {

@@ -3,9 +3,11 @@ import { isTradingDate } from './trading-calendar.js';
 
 /** @typedef {import('./types.js').ForecastRecord} ForecastRecord */
 
+export const premarketStartHour = 6;
+
 /** @param {number} hour 台灣當地的整點小時 @returns {boolean} */
 export function isPremarketHour(hour) {
-  return Number.isInteger(hour) && hour >= 6 && hour < 9;
+  return Number.isInteger(hour) && hour >= premarketStartHour && hour < 9;
 }
 
 /** @param {ForecastRecord|null|undefined} row @param {string} date @returns {boolean} */
