@@ -1,11 +1,17 @@
 # 台股策略實驗室
 
-台股技術分析與情境模擬工作站，整合葛蘭碧八大法則、布林通道、MACD 與 K 線型態。透過互動圖表比較技術指標與訊號，並下載目前的圖表資料。
+[![每日行情排程](https://github.com/iankingh/tw-stock-strategy-lab/actions/workflows/daily-price-tracking.yml/badge.svg?branch=main&event=schedule)](https://github.com/iankingh/tw-stock-strategy-lab/actions/workflows/daily-price-tracking.yml?query=branch%3Amain+event%3Aschedule)
+[![行情異常稽核](https://github.com/iankingh/tw-stock-strategy-lab/actions/workflows/tracking-incidents.yml/badge.svg?branch=main&event=schedule)](https://github.com/iankingh/tw-stock-strategy-lab/actions/workflows/tracking-incidents.yml?query=branch%3Amain+event%3Aschedule)
+
+查看台灣加權指數與六檔個股的盤前收盤預估、漲跌方向及實際收盤，或透過互動 K 線研究葛蘭碧法則、布林通道與 MACD。[開啟工作站](https://iankingh.github.io/tw-stock-strategy-lab/)
+
+> **本工具僅供技術分析教學與研究參考。模擬結果不代表實際未來走勢，也不構成投資建議。**
+
+徽章顯示各工作流程最近一次定時執行的結果。查詢指定交易日的實際交付情形，可對照[每月行情 CSV](data/daily-price-tracking) 與[異常月報](data/tracking-incidents)。
 
 ## 如何開啟工作站
 
-- **線上開啟**　[前往台股策略實驗室](https://iankingh.github.io/tw-stock-strategy-lab/)。
-- **本機開啟**　從 GitHub 的 **Code → Download ZIP** 下載並解壓縮，在專案目錄執行 `python3 -m http.server 8000`，開啟 [本機工作站](http://localhost:8000/)。[下載專案 ZIP](https://github.com/iankingh/tw-stock-strategy-lab/archive/refs/heads/main.zip)
+從 GitHub 的 **Code → Download ZIP** 下載並解壓縮，在專案目錄執行 `python3 -m http.server 8000`，開啟 [本機工作站](http://localhost:8000/)。[下載專案 ZIP](https://github.com/iankingh/tw-stock-strategy-lab/archive/refs/heads/main.zip)
 
 也可以用 Git 下載並啟動本機工作站。
 
@@ -15,7 +21,9 @@ cd tw-stock-strategy-lab
 python3 -m http.server 8000
 ```
 
-工作站使用原生 JavaScript、SVG 和 Tailwind CSS CDN。請保留解壓後的目錄結構，首頁會從 `data/taiex.json` 載入證交所大盤日 K。Tailwind CSS、Google Fonts 和 FinMind 日 K 資料會透過網路載入。
+工作站使用原生 JavaScript 與 SVG。套件已附編譯完成的 `assets/workstation.css`，下載後即可用本機 HTTP 伺服器開啟。首頁從同源的 `data/taiex.json` 載入證交所大盤日 K，字型與個股日 K 分別從 Google Fonts 和 FinMind 取得。修改 HTML 或 JavaScript 的 Tailwind 樣式類別後，在專案目錄執行 `npm ci` 和 `npm run build:css`，將產生的 CSS 一併提交。
+
+v1.0.0 將 Tailwind 3.4.17 從瀏覽器執行改為預先編譯，樣式資源的 gzip 大小從 123,318 降至 3,932 bytes。本機以 Chromium、390 × 844 視窗、10 Mbps 下載及 40 ms 延遲重播同一份首頁，兩版各冷載三次並排除外部字型。最大內容繪製時間（LCP）中位數為舊版 504 ms、新版 316 ms。這組數字反映該測試環境。
 
 網頁與 Node.js 排程直接匯入 [共用 ESM 模組](shared/)。每日 CSV 的解析與寫回使用同一份欄位定義，價格缺值在程式內以 `null` 表示，寫回 CSV 時留白。正式盤前紀錄的預估收盤與方向各自計分；44 日路徑供圖表教學使用。
 
@@ -108,13 +116,17 @@ node --test
 
 ## 部署到 GitHub Pages
 
-1. 將 `index.html` 放在 GitHub 儲存庫的 `main` 分支根目錄。
+1. 將專案提交至 `main`，保留根目錄的 `index.html`、`workstation.js` 與 `assets/`、`shared/`、`data/` 的相對路徑。
 2. 在儲存庫開啟 **Settings → Pages**，將 **Source** 設為 **Deploy from a branch**。
 3. 選擇 **`main`** 和 **`/(root)`**，按 **Save**。部署完成後可從 Pages 設定頁開啟網站。
 
 [GitHub Pages 發布設定文件](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
 
-本工具僅供技術分析教學與研究參考。模擬結果不代表實際未來走勢，也不構成投資建議。
+## 維護行情封存
+
+v1.0.0 繼續按月將 CSV 存在 Git。發布前的快照（`053b269`）共有 16 個提交異動過 `data/`，該目錄的受追蹤檔案合計 87,211 bytes。此次從 GitHub 完整 clone 耗時 1.15 秒，Git 物件包為 235.09 KiB。網站、稽核和回測都能從同一個提交取得對應的資料。
+
+每月可用 `git count-objects -vH` 檢查 Git 物件大小，以 `git ls-tree -rl HEAD data` 查看個別檔案，並比較乾淨 clone 與 Pages 部署時間。若歷史月份開始拖慢下載，可先評估將封存月份放到 Release Assets；若需要跨標的查詢，再評估外部資料庫。遷移驗收須逐筆核對原始時間、缺值、價格與方向，並重跑封存回測。
 
 ## 大盤預測與實盤績效
 
@@ -128,3 +140,9 @@ node scripts/taiex.mjs 2023-01-01 2026-11-18
 第一行用本地行情與封存交易日重算大盤模型參數和結果表。第二行從證交所重抓指定日期範圍的日 K。2026 年截至 11 月 17 日的 210 個交易日，採用昨收點位的平均絕對誤差為 600.69 點（昨收的 1.483%）。方向基準固定預測「漲」，命中 114 天（54.286%），96 個下跌日均未命中。[完整大盤回測與逐類命中數](research/taiex-results.md)
 
 功能進入 main 後，工作流程在 `data/taiex-start.txt` 記下首個應交付的大盤交易日。交易日 09:00 前啟用從當天起算，其餘順延至下一個可交付交易日。收盤補抓會同步保存同源日 K，每月 CSV 使用現有欄位。排程提交行情變更後會要求 GitHub Pages 重新建置首頁。`node scripts/live-performance.mjs 起日 迄日` 分別列出大盤與六檔個股的準時率、已配對誤差及方向命中率。
+
+## 授權
+
+本專案自行撰寫的程式碼採用 [MIT License](LICENSE)。證交所與 FinMind 的行情、日 K 與研究快照依各資料來源的使用條件辦理。[證交所交易資訊使用規範](https://www.twse.com.tw/zh/products/information/use.html) · [FinMind 資料來源](https://finmind.github.io/tutor/TaiwanMarket/Technical/)
+
+編譯後的樣式使用 Tailwind CSS 及其 Preflight，隨附[第三方授權聲明](assets/tailwind-LICENSE.txt)。外部字型及建置相依套件依各自授權使用。

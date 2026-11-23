@@ -1,5 +1,13 @@
 {
   "name": "tw-stock-strategy-lab",
+  "version": "1.0.0",
+  "license": "MIT",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "build:css": "tailwindcss --content ./index.html,./workstation.js --minify --output ./assets/workstation.css"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.17"
+  }
 }
