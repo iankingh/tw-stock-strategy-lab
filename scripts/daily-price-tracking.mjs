@@ -110,25 +110,36 @@ async function missingForecasts(records, date, start) {
   return targets;
 }
 
-// 以 runner 真正啟動時的台灣日期判斷，允許延遲的夜間事件救回當日盤前預測。
-export async function standbyDate(now) {
-  if (now.hour < premarketStartHour - 2 || now.hour >= premarketStartHour) return null;
-  return await isTradingDate(now.date) ? now.date : null;
+// 依 runner 實際啟動的台灣時間決定要等哪個交易時段。
+const closeStartHour = 17;
+const standbyHours = { forecast: premarketStartHour, retry: closeStartHour };
+
+export async function standbyTask(now) {
+  const slot = Object.entries(standbyHours).find(([, hour]) => now.hour >= hour - 2 && now.hour < hour);
+  if (!slot || !await isTradingDate(now.date)) return null;
+  const [mode] = slot;
+  return { date: now.date, mode };
 }
 
-export async function waitForPremarket(date, clock = taipeiClock, delay = sleep) {
+export async function waitForCollection(date, mode, clock = taipeiClock, delay = sleep) {
   const now = clock();
-  if (now.date !== date || !await isTradingDate(date)) throw new Error(`無法為 ${date} 待命：${now.timestamp}`);
-  if (now.hour < premarketStartHour) {
-    if (now.hour < premarketStartHour - 2) throw new Error(`尚未進入 ${date} 的清晨待命時段`);
-    const opening = Date.parse(`${date}T${String(premarketStartHour).padStart(2, '0')}:00:00+08:00`);
-    await summary(`${date} 清晨備援於台灣時間 ${now.timestamp} 待命，06:00 再檢查盤前預測。`);
-    await delay(Math.max(0, opening - Date.parse(now.iso)));
+  if (!Object.hasOwn(standbyHours, mode) || !validDate(date) || date > now.date ||
+      (mode === 'forecast' && now.date !== date) || !await isTradingDate(date)) {
+    throw new Error(`無法為 ${date} 待命：${now.timestamp}`);
+  }
+  const time = String(standbyHours[mode]).padStart(2, '0') + ':00';
+  const target = Date.parse(`${date}T${time}:00+08:00`);
+  const remaining = target - Date.parse(now.iso);
+  if (remaining > 2 * 60 * 60 * 1000) throw new Error(`尚未進入 ${date} 的待命時段`);
+  if (remaining > 0) {
+    await summary(`台灣時間 ${now.timestamp} 開始待命，目標為 ${date} ${time}。`);
+    await delay(remaining);
   }
   const wake = clock();
-  if (wake.date !== date || wake.hour < premarketStartHour) throw new Error(`${date} 待命結束時間異常：${wake.timestamp}`);
-  // 寫入工作會重新讀 main 與實際時鐘；逾時且仍有缺漏時會留下失敗紀錄。
-  await summary(`清晨備援於台灣時間 ${wake.timestamp} 結束待命，交由正式工作核對 ${date} 的七筆紀錄。`);
+  if (Date.parse(wake.iso) < target || (mode === 'forecast' && wake.date !== date)) {
+    throw new Error(`${date} 待命結束時間異常：${wake.timestamp}`);
+  }
+  await summary(`台灣時間 ${wake.timestamp} 結束待命，交由正式工作核對 ${date} 的${mode === 'forecast' ? '盤前預測' : '收盤行情'}。`);
 }
 
 export async function recoveryTask(records, now, start = indexStart) {
@@ -137,7 +148,7 @@ export async function recoveryTask(records, now, start = indexStart) {
     const missing = await missingForecasts(records, now.date, start);
     return missing.length ? { mode: 'forecast', date: now.date, missing } : null;
   }
-  const date = now.hour >= 17 && await isTradingDate(now.date)
+  const date = now.hour >= closeStartHour && await isTradingDate(now.date)
     ? now.date : await previousTradingDate(now.date);
   const missing = [];
   for (const symbol of trackingSymbols(date, start)) {
@@ -154,12 +165,12 @@ export async function runForecast(records, date, started, collect = collectForec
   }
   await summary(`${date} 盤前預測待補：${targets.join('、')}`);
   if (started.date !== date || !isPremarketHour(started.hour)) {
-    throw new Error(`${date}: job started at ${started.timestamp}, outside the 06:00–09:00 Taiwan pre-market window`);
+    throw new Error(`${date} 盤前工作於台灣時間 ${started.timestamp} 啟動，超出 06:00 至 09:00 前的寫入時段，本次未開始抓取行情。`);
   }
   const forecasts = await collect(date, targets);
   const recorded = clock();
   if (recorded.date !== date || !isPremarketHour(recorded.hour)) {
-    throw new Error(`${date}: forecast calculation finished outside the pre-market window at ${recorded.timestamp}`);
+    throw new Error(`${date} 盤前預測於台灣時間 ${recorded.timestamp} 才完成，超出寫入時段，預測留白。`);
   }
   for (const [stock, values] of forecasts) {
     await records.update(date, stock, { ...values, forecast_at: recorded.timestamp });
@@ -253,18 +264,23 @@ export function closeScheduleDate(now, schedule) {
 }
 
 async function main(mode, requestedDate, option) {
-  if (mode === 'wait-for-premarket') return waitForPremarket(requestedDate);
+  if (mode === 'wait-for-premarket') return waitForCollection(requestedDate, 'forecast');
+  if (mode === 'wait-for-collection') return waitForCollection(requestedDate, option);
   if (mode === 'check-recovery') {
     const now = taipeiClock();
     const records = new MonthlyRecords(recordsDirectory);
     await summary(`行情備援實際啟動時間（台灣）：${now.timestamp}`);
-    const standby = await standbyDate(now);
+    const standby = await standbyTask(now);
     if (standby) {
-      await summary(`${standby} 已安排 06:00 清晨備援。`);
-      if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `standby_date=${standby}\n`);
+      await summary(`${standby.date} 已安排${standby.mode === 'forecast' ? ' 06:00 盤前預測' : ' 17:00 收盤補抓'}。`);
+      if (process.env.GITHUB_OUTPUT) {
+        await appendFile(process.env.GITHUB_OUTPUT, `wait_date=${standby.date}\nwait_mode=${standby.mode}\n`);
+        // 已啟動的舊版工作只認得盤前的 standby_date。
+        if (standby.mode === 'forecast') await appendFile(process.env.GITHUB_OUTPUT, `standby_date=${standby.date}\n`);
+      }
     }
     const task = await recoveryTask(records, now);
-    if (!task) return summary(standby ? '目前無收盤價待補。' : '無需補跑。');
+    if (!task) return summary(standby ? '上一個交易日的收盤價已齊。' : '無需補跑。');
     await summary(`${task.date} 缺${task.mode === 'forecast' ? '盤前預測' : '收盤價'}：${task.missing.join('、')}。`);
     if (process.env.GITHUB_OUTPUT) {
       await appendFile(process.env.GITHUB_OUTPUT, `trade_date=${task.date}\nmode=${task.mode}\n`);
@@ -291,7 +307,7 @@ async function main(mode, requestedDate, option) {
   if (mode === 'forecast' && date !== now.date) {
     throw new Error('Forecasts can only be recorded on their target trading date');
   }
-  if (mode !== 'forecast' && date === now.date && now.hour < 17) {
+  if (mode !== 'forecast' && date === now.date && now.hour < closeStartHour) {
     throw new Error('當日收盤價於台灣時間 17:00 後開放');
   }
 

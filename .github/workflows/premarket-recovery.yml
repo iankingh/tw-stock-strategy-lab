@@ -30,7 +30,8 @@ jobs:
     outputs:
       mode: ${{ steps.check.outputs.mode }}
       trade_date: ${{ steps.check.outputs.trade_date }}
-      standby_date: ${{ steps.check.outputs.standby_date }}
+      wait_date: ${{ steps.check.outputs.wait_date }}
+      wait_mode: ${{ steps.check.outputs.wait_mode }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -57,11 +58,11 @@ jobs:
 
   standby:
     needs: check
-    if: ${{ !cancelled() && needs.check.outputs.standby_date != '' }}
+    if: ${{ !cancelled() && needs.check.outputs.wait_date != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 130
     concurrency:
-      group: premarket-standby-${{ needs.check.outputs.standby_date }}
+      group: tracking-standby-${{ needs.check.outputs.wait_mode }}-${{ needs.check.outputs.wait_date }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v6
@@ -72,12 +73,13 @@ jobs:
         with:
           node-version: '24'
           package-manager-cache: false
-      - name: 在 GitHub 等到台灣盤前時段
+      - name: 在 GitHub 等到指定的台灣行情時段
         env:
-          TRADE_DATE: ${{ needs.check.outputs.standby_date }}
-        run: node scripts/daily-price-tracking.mjs wait-for-premarket "$TRADE_DATE"
+          TRADE_DATE: ${{ needs.check.outputs.wait_date }}
+          WAIT_MODE: ${{ needs.check.outputs.wait_mode }}
+        run: node scripts/daily-price-tracking.mjs wait-for-collection "$TRADE_DATE" "$WAIT_MODE"
 
-  forecast-after-standby:
+  record-after-standby:
     needs: [check, standby]
     if: ${{ !cancelled() && needs.standby.result == 'success' }}
     permissions:
@@ -85,5 +87,5 @@ jobs:
       pages: write
     uses: ./.github/workflows/daily-price-tracking.yml
     with:
-      mode: forecast
-      trade_date: ${{ needs.check.outputs.standby_date }}
+      mode: ${{ needs.check.outputs.wait_mode }}
+      trade_date: ${{ needs.check.outputs.wait_date }}

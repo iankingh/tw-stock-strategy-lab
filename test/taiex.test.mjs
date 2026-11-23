@@ -42,7 +42,7 @@ test('啟用日起大盤獨立計分，逾時留白、重跑保留預測、收�
   for (const stock of symbols) await records.update(day, stock, { forecast_close: '1', actual_close: '1', forecast_at: day + ' 07:00:00' });
   const early = { date: day, hour: 7, timestamp: day + ' 07:05:01' };
   const late = { date: day, hour: 9, timestamp: day + ' 09:00:01' };
-  await assert.rejects(runForecast(records, day, late, undefined, () => late, day), /outside/);
+  await assert.rejects(runForecast(records, day, late, undefined, () => late, day), /未開始抓取行情/);
   assert.equal(await records.get(day, 'TAIEX'), undefined);
   await runForecast(records, day, early, undefined, () => early, day);
   const row = await records.get(day, 'TAIEX');
