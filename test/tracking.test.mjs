@@ -7,7 +7,7 @@ import { MonthlyRecords } from '../scripts/price-tracking-records.mjs';
 import { onTimeForecast, runForecast, runClose, retryDates, checkCloses, closeScheduleDate, recoveryTask, standbyTask, waitForCollection } from '../scripts/daily-price-tracking.mjs';
 import { findPremarketRecord } from '../shared/premarket.js';
 import { taipeiClock } from '../shared/trading-calendar.js';
-import { symbols } from '../scripts/price-tracking-market.mjs';
+import { datedTWSEPrices, symbols } from '../scripts/price-tracking-market.mjs';
 import { livePerformance } from '../scripts/live-performance.mjs';
 import parameters from '../scripts/daily-model-parameters.json' with { type: 'json' };
 
@@ -105,6 +105,76 @@ test('正式預測採用截至昨收的日 K，補跑不覆寫，逾時與資料
   const calls = fetches;
   await runForecast(disk, day, late);
   assert.equal(fetches, calls);
+});
+
+test('OpenAPI 落後一日，用同交易日收盤表補六檔，避免逐檔月報 HTTP 307', async t => {
+  const records = await tempRecords(t);
+  const date = '2026-11-23';
+  const requests = [];
+  t.mock.method(globalThis, 'fetch', async url => {
+    requests.push(url.pathname);
+    if (url.pathname.endsWith('/STOCK_DAY_ALL')) {
+      return Response.json([{ Code: '2330', Date: '1151120', ClosingPrice: '9' }]);
+    }
+    if (!url.pathname.endsWith('/MI_INDEX')) return new Response(null, { status: 307 });
+    assert.equal(url.searchParams.get('date'), '20261123');
+    return Response.json({ stat: 'OK', date: '20261123', tables: [
+      { fields: ['指數', '收盤指數'], data: [] },
+      { fields: ['收盤價', '證券代號'], data: symbols.map(stock => ['2,030.00', stock]) }
+    ] });
+  });
+  await runClose(records, date, date, false);
+  await records.save();
+  assert.deepEqual(requests, ['/v1/exchangeReport/STOCK_DAY_ALL', '/rwd/zh/afterTrading/MI_INDEX']);
+  const disk = new MonthlyRecords(records.directory);
+  for (const stock of symbols) assert.equal((await disk.get(date, stock)).actual_close, 2030);
+  await checkCloses(disk, await retryDates(date, false));
+});
+
+test('全市場收盤表拒收錯日、缺欄及無效價格，未報價的個股可由月報補足', async t => {
+  const date = '2026-11-23';
+  const fields = ['證券代號', '收盤價'];
+  let report = { stat: 'OK', date: '20261120', tables: [{ fields, data: [['2312', '99']] }] };
+  const months = [];
+  t.mock.method(globalThis, 'fetch', async url => {
+    if (url.pathname.endsWith('/MI_INDEX')) return Response.json(report);
+    months.push(url.searchParams.get('stockNo'));
+    return Response.json({ stat: 'OK', fields: ['日期','收盤價'], data: [['115/11/23','21.20']] });
+  });
+  await assert.rejects(datedTWSEPrices(date), /2026-11-23/);
+  report = { ...report, date: '20261123', tables: [] };
+  await assert.rejects(datedTWSEPrices(date), /缺少/);
+  report.tables = [{ fields, data: symbols.map(stock => [stock, stock === '2312' ? '--' : '40']) }];
+  const records = await tempRecords(t);
+  await runClose(records, date, '2026-11-24', false);
+  assert.deepEqual(months, ['2312']);
+  assert.equal((await records.get(date, '2312')).actual_close, 21.2);
+  await checkCloses(records, await retryDates(date, false));
+});
+
+test('兩條證交所路徑均失敗時，摘要留存股票與 HTTP 錯誤，再補抓可用同日 FinMind', async t => {
+  const records = await tempRecords(t);
+  const date = '2026-11-23';
+  for (const id of [...symbols, 'TAIEX'].filter(id => id !== '3481')) {
+    await records.update(date, id, { actual_close: 100 });
+  }
+  const logs = [];
+  t.mock.method(console, 'log', message => logs.push(message));
+  t.mock.method(globalThis, 'fetch', async url => {
+    if (url.hostname === 'api.finmindtrade.com') {
+      return Response.json({ msg: 'success', data: [{ date, stock_id: '3481', close: 30.25 }] });
+    }
+    return new Response(null, { status: 307 });
+  });
+  const dates = await retryDates(date, false);
+  await runClose(records, date, '2026-11-24', false);
+  await assert.rejects(checkCloses(records, dates), /尚缺 1 筆/);
+  assert.match(logs.join('\n'), /3481 證交所個股月報：.*HTTP 307/);
+  await runClose(records, date, '2026-11-24', true);
+  await records.save();
+  const disk = new MonthlyRecords(records.directory);
+  await checkCloses(disk, dates);
+  assert.equal((await disk.get(date, '3481')).actual_close, 30.25);
 });
 
 test('晚間補抓延遲跨午夜時對應原交易日與原月份', () => {

@@ -89,6 +89,27 @@ export async function latestTWSEPrices(date) {
   return quotes;
 }
 
+export async function datedTWSEPrices(date) {
+  const reportDate = date.replaceAll('-', '');
+  const data = await getJSON('https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX', {
+    date: reportDate, type: 'ALLBUT0999', response: 'json'
+  });
+  if (data.stat !== 'OK' || data.date !== reportDate || !Array.isArray(data.tables)) {
+    throw new Error(`證交所未提供 ${date} 的每日收盤行情`);
+  }
+  const table = data.tables.find(t =>
+    t.fields?.includes('證券代號') && t.fields.includes('收盤價') && Array.isArray(t.data));
+  if (!table) throw new Error('每日收盤行情缺少證券代號或收盤價欄位');
+  const codeIndex = table.fields.indexOf('證券代號');
+  const closeIndex = table.fields.indexOf('收盤價');
+  const quotes = new Map();
+  for (const row of table.data) {
+    const close = price(row[closeIndex]);
+    if (close !== null) quotes.set(String(row[codeIndex]).trim(), close);
+  }
+  return quotes;
+}
+
 async function loadTWSEMonth(stock, date) {
   const data = await getJSON('https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY', {
     date: date.replaceAll('-', ''), stockNo: stock, response: 'json'

@@ -80,6 +80,8 @@ JSON 每根 K 線的 `selectedMA`、`selectedBiasPct` 及標的摘要的 `select
 
 ### 失敗與補抓紀錄
 
+個股收盤先核對證交所 OpenAPI 每筆資料的交易日。如果快照仍是前一交易日，排程會以指定日期查一次證交所全市場收盤表，再對缺值的股票查個股月報。正式行情驗證要求六檔個股和大盤都有該日的證交所收盤資料。[證交所每日收盤行情](https://www.twse.com.tw/zh/trading/historical/mi-index.html)
+
 11 月 23 日的備援在 16:58:04 只檢查了上一個交易日。修正後，相同啟動時間會安排當日 17:00 的收盤補抓。即使後續寫入工作延到隔日，仍使用原交易日逐筆核對。[當天下午的執行紀錄](https://github.com/iankingh/tw-stock-strategy-lab/actions/runs/45142866703)
 
 網站的「排程異常紀錄」可開啟[每月異常紀錄](data/tracking-incidents)。每筆保留台灣時間、工作、失敗步驟或缺漏標的，並附上有關的 Actions 工作。補齊另記一筆，原始紀錄會保留。

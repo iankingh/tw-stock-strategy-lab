@@ -8,7 +8,7 @@ import parameters from './daily-model-parameters.json' with { type: 'json' };
 import { features, predictDaily } from '../shared/daily-model.js';
 import { MonthlyRecords } from './price-tracking-records.mjs';
 import {
-  finMindPrices, historicalTWSEClose, isTradingDate, latestTWSEPrices, previousTradingDate, shiftDate, symbols, taipeiClock
+  datedTWSEPrices, finMindPrices, historicalTWSEClose, isTradingDate, latestTWSEPrices, previousTradingDate, shiftDate, symbols, taipeiClock
 } from './price-tracking-market.mjs';
 
 import { validDate } from '../shared/trading-calendar.js';
@@ -57,27 +57,40 @@ async function collectForecasts(date, targets, persist = true) {
 }
 
 async function officialCloses(date, targets, preferLatest, allowFinMind, persist = true) {
+  const stocks = targets.filter(code => code !== 'TAIEX');
+  const sourceErrors = [];
   let latest = new Map();
-  if (preferLatest && targets.some(code => code !== 'TAIEX')) {
+  if (preferLatest && stocks.length) {
     latest = await latestTWSEPrices(date).catch((error) => {
-      console.warn(`${date} TWSE OpenAPI: ${error.message}`);
+      sourceErrors.push(`- 證交所最新行情 OpenAPI：${error.message}`);
       return new Map();
     });
   }
 
+  let daily = new Map();
+  const missing = stocks.filter(code => !latest.has(code));
+  if (missing.length) {
+    try {
+      daily = await datedTWSEPrices(date);
+      const found = missing.filter(code => daily.has(code));
+      await summary(`${date} 證交所每日收盤行情取得 ${found.length}/${missing.length} 檔個股。`);
+    } catch (error) {
+      await summary(`${date} 證交所每日收盤行情：${error.message}。轉查個股月報。`);
+    }
+  }
   const results = [];
   for (const stock of targets) {
-    let close = latest.get(stock);
+    let close = latest.get(stock) ?? daily.get(stock);
     let source = 'TWSE';
     if (stock === 'TAIEX') {
       const bars = await barsThrough(date, persist).catch(error => {
-        console.warn(date + ' TAIEX: ' + error.message);
+        sourceErrors.push(`- TAIEX 證交所大盤月報：${error.message}`);
         return [];
       });
       close = bars.find(bar => bar.date === date)?.close;
     } else if (close === undefined) {
       close = await historicalTWSEClose(stock, date).catch((error) => {
-        console.warn(`${date} ${stock} TWSE: ${error.message}`);
+        sourceErrors.push(`- ${stock} 證交所個股月報：${error.message}`);
         return undefined;
       });
     }
@@ -86,12 +99,12 @@ async function officialCloses(date, targets, preferLatest, allowFinMind, persist
       close = await finMindPrices(stock, date, date)
         .then((quotes) => quotes.get(date))
         .catch((error) => {
-          console.warn(`${date} ${stock} FinMind: ${error.message}`);
+          sourceErrors.push(`- ${stock} FinMind：${error.message}`);
           return undefined;
         });
     }
     if (close === undefined) {
-      console.warn(`${date} ${stock} close not available`);
+      sourceErrors.push(`- ${stock} 仍缺少指定交易日的收盤價。`);
       continue;
     }
     if (source === 'FinMind') console.log(`${date} ${stock} close collected from FinMind`);
@@ -99,6 +112,7 @@ async function officialCloses(date, targets, preferLatest, allowFinMind, persist
       actual_close: close.toFixed(2), actual_recorded_at: taipeiClock().timestamp
     }]);
   }
+  if (sourceErrors.length) await summary(`${date} 收盤來源查詢紀錄\n\n${sourceErrors.join('\n')}`);
   return results;
 }
 
@@ -321,7 +335,8 @@ async function main(mode, requestedDate, option) {
     const forecasts = await collectForecasts(date, targets, false);
     const closes = await officialCloses(date, targets, date === now.date, false, false);
     if (forecasts.length !== targets.length || closes.length !== targets.length) {
-      throw new Error(`Verification incomplete: ${forecasts.length} forecasts and ${closes.length} official closes for ${targets.length} instruments`);
+      const missing = rows => targets.filter(code => !rows.some(([stock]) => stock === code)).join('、') || '無';
+      throw new Error(`${date} 行情驗證缺漏。預測輸入：${missing(forecasts)}。證交所收盤：${missing(closes)}。`);
     }
     console.log(`${date}: verified ${forecasts.length} forecasts and ${closes.length} dated TWSE closes; CSV not modified`);
     return;
