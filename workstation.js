@@ -1,3 +1,4 @@
+import { loadTrend, bindTrend, renderTrend } from './price-trend.js';
 import * as calendar from './shared/trading-calendar.js';
 import { forecastClosePath } from './shared/forecast-model.js';
 import { computeTechnicalIndicators, applyBaselineRule } from './shared/indicators.js';
@@ -544,6 +545,14 @@ function rebuildAndRenderAll() {
   if (!isMarketIndex()) renderScenarioCards();
   renderBottomMatrix();
   renderChartSelection();
+  refreshTrend();
+}
+
+function refreshTrend() {
+  const code = state.selectedStockCode;
+  if (code !== 'TAIEX' && !Object.hasOwn(STOCK_PRESETS, code)) return;
+  const request = state.premarket;
+  renderTrend(code, todayInTaipei(), request?.code === code ? request.trend : null, state.liveCandlesMap[code] ?? []);
 }
 
 function renderChartDataSource() {
@@ -705,7 +714,8 @@ async function loadPremarket(code) {
 
   try {
     const month = date.slice(0, 7);
-    const fetchRecords = async month => {
+    const cache = new Map();
+    const fetchMonth = async month => {
       const response = await fetch(`data/daily-price-tracking/${month}.csv`, {
         cache: 'no-cache',
         signal: AbortSignal.timeout(8000)
@@ -714,6 +724,21 @@ async function loadPremarket(code) {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return parseCSVToJSON(await response.text(), month);
     };
+    const fetchRecords = key => {
+      if (!cache.has(key)) cache.set(key, fetchMonth(key));
+      return cache.get(key);
+    };
+    if (code === 'TAIEX' || Object.hasOwn(STOCK_PRESETS, code)) {
+      loadTrend(code, date, fetchRecords).then(trend => {
+        if (state.premarket !== request) return;
+        request.trend = trend;
+        refreshTrend();
+      }).catch(() => {
+        if (state.premarket !== request) return;
+        request.trend = { rows: [], pathError: true, historyError: true };
+        refreshTrend();
+      });
+    }
     const rows = await fetchRecords(month);
     request.record = closed ? null : findPremarketRecord(rows, date, code);
     const close = findRecordedClose(rows, date, code);
@@ -757,7 +782,7 @@ function renderPremarketSummary() {
   } else {
     const messages = {
       loading: '讀取今日盤前紀錄…',
-      ready: '今日尚無盤前預測',
+      ready: calendar.taipeiClock().hour >= 9 ? '今日盤前已截止，缺少當日預測' : '今日尚無盤前預測',
       error: '盤前紀錄讀取失敗，請重新整理',
       closed: '今日休市'
     };
@@ -1271,6 +1296,11 @@ function setStockControls(open) {
 function selectStock(code, name) {
   if (name) state.stockNames[code] = name;
   state.selectedStockCode = code;
+  const tracked = code === 'TAIEX' || Object.hasOwn(STOCK_PRESETS, code);
+  document.getElementById('price-trend').hidden = !tracked;
+  const technical = document.getElementById('technical-view');
+  technical.open = !tracked;
+  technical.querySelector('summary').textContent = code === 'TAIEX' ? '歷史日 K 與技術分析' : '歷史日 K、44 日教學情境與技術分析';
   state.chartMode = 'RECENT_FORECAST';
   state.selectedBarDate = null;
   state.hoveredIndex = null;
@@ -1468,6 +1498,7 @@ function exportStrategyJSON() {
 // 8. 事件綁定與初始化啟動
 // ==========================================
 window.addEventListener('DOMContentLoaded', () => {
+  bindTrend();
   document.addEventListener('click', event => {
     const button = event.target.closest('button');
     if (!button || button.disabled) return;

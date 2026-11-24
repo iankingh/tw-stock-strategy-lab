@@ -5,7 +5,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import indexParameters from './taiex-model-parameters.json' with { type: 'json' };
 import { barsThrough, readStart, activationDate, activationFile } from './taiex.mjs';
 import parameters from './daily-model-parameters.json' with { type: 'json' };
-import { features, predictDaily } from '../shared/daily-model.js';
+import { firstPathDate, pathCalendar, matchesDaily } from '../shared/five-day.js';
+import { forecastGaps, readEdition, saveEdition } from './published-paths.mjs';
+import paths from './five-day-parameters.json' with { type: 'json' };
+import { features, predictDaily, predictClose } from '../shared/daily-model.js';
 import { MonthlyRecords } from './price-tracking-records.mjs';
 import {
   datedTWSEPrices, finMindPrices, historicalTWSEClose, isTradingDate, latestTWSEPrices, previousTradingDate, shiftDate, symbols, taipeiClock
@@ -21,7 +24,7 @@ export function trackingSymbols(date, start = indexStart) {
   return start && date >= start ? [...symbols, 'TAIEX'] : symbols;
 }
 
-async function forecastFor(stock, previous, persist) {
+async function forecastFor(stock, previous, persist, expected) {
   const index = stock === 'TAIEX';
   const deployment = index ? indexParameters : parameters;
   const series = index
@@ -34,17 +37,23 @@ async function forecastFor(stock, previous, persist) {
   const closes = dates.slice(-21).map((date) => Number(series.get(date).toFixed(2)));
   const previousClose = closes.at(-1);
   const model = { ...deployment.models[stock], priceMethod: deployment.priceMethod, directionMethod: deployment.directionMethod };
-  const prediction = predictDaily(model, features(closes), previousClose);
+  const input = features(closes);
+  const prediction = predictDaily(model, input, previousClose);
   return {
     forecast_close: prediction.close.toFixed(2), previous_close: previousClose.toFixed(2),
-    forecast_direction: prediction.direction, model_version: deployment.version
+    forecast_direction: prediction.direction, model_version: deployment.version,
+    input, history_through: previous, complete_window: !expected || expected.every(day => series.has(day)), priceMethod: deployment.priceMethod
   };
 }
 
 async function collectForecasts(date, targets, persist = true) {
   if (!targets.length) return [];
   const previous = await previousTradingDate(date);
-  const results = await Promise.allSettled(targets.map((symbol) => forecastFor(symbol, previous, persist)));
+  const expected = [previous];
+  if (date >= firstPathDate) {
+    while (expected.length < 21) expected.push(await previousTradingDate(expected.at(-1)));
+  }
+  const results = await Promise.allSettled(targets.map(symbol => forecastFor(symbol, previous, persist, expected)));
   const forecasts = [];
   const errors = [];
   for (const [i, result] of results.entries()) {
@@ -116,14 +125,6 @@ async function officialCloses(date, targets, preferLatest, allowFinMind, persist
   return results;
 }
 
-async function missingForecasts(records, date, start) {
-  const targets = [];
-  for (const stock of trackingSymbols(date, start)) {
-    if (!onTimeForecast(await records.get(date, stock), date)) targets.push(stock);
-  }
-  return targets;
-}
-
 // 依 runner 實際啟動的台灣時間決定要等哪個交易時段。
 const closeStartHour = 17;
 const standbyHours = { forecast: premarketStartHour, retry: closeStartHour };
@@ -159,7 +160,8 @@ export async function waitForCollection(date, mode, clock = taipeiClock, delay =
 export async function recoveryTask(records, now, start = indexStart) {
   if (isPremarketHour(now.hour)) {
     if (!await isTradingDate(now.date)) return null;
-    const missing = await missingForecasts(records, now.date, start);
+    const { daily, paths } = await forecastGaps(records, now.date, trackingSymbols(now.date, start));
+    const missing = [...new Set([...daily, ...paths])];
     return missing.length ? { mode: 'forecast', date: now.date, missing } : null;
   }
   const date = now.hour >= closeStartHour && await isTradingDate(now.date)
@@ -172,27 +174,65 @@ export async function recoveryTask(records, now, start = indexStart) {
 }
 
 export async function runForecast(records, date, started, collect = collectForecasts, clock = taipeiClock, start = indexStart) {
-  const targets = await missingForecasts(records, date, start);
-  if (!targets.length) {
-    console.log(`${date}: all forecasts already recorded`);
-    return;
-  }
-  await summary(`${date} 盤前預測待補：${targets.join('、')}`);
+  const symbols = trackingSymbols(date, start);
+  const edition = date >= firstPathDate ? await readEdition(records, date) : {};
+  const gaps = await forecastGaps(records, date, symbols, edition);
+  const targets = [...new Set([...gaps.daily, ...gaps.paths])];
+  if (!targets.length) return summary(date + ' 所有適用的盤前預測已齊。');
+  if (gaps.daily.length) await summary(date + ' 單日預測待補：' + gaps.daily.join('、'));
+  if (gaps.paths.length) await summary(date + ' 五日預估待補：' + gaps.paths.join('、'));
   if (started.date !== date || !isPremarketHour(started.hour)) {
     throw new Error(`${date} 盤前工作於台灣時間 ${started.timestamp} 啟動，超出 06:00 至 09:00 前的寫入時段，本次未開始抓取行情。`);
   }
-  const forecasts = await collect(date, targets);
+  const needsCollection = targets.filter(code => gaps.daily.includes(code) || !Object.hasOwn(edition, code));
+  const forecasts = needsCollection.length ? await collect(date, needsCollection) : [];
+  const pending = [];
+  for (const [code, values] of forecasts) {
+    if (!gaps.paths.includes(code) || Object.hasOwn(edition, code)) continue;
+    try {
+      const daily = gaps.daily.includes(code) ? values : await records.get(date, code);
+      if (daily.model_version !== values.model_version || Number(daily.previous_close) !== Number(values.previous_close)) {
+        throw new Error('重跑的輸入或模型版本與已發布單日紀錄不符');
+      }
+      const { dates, previous } = pathCalendar(date);
+      if (!values.complete_window) throw new Error('缺少連續 21 個交易日收盤');
+      if (values.history_through !== previous) throw new Error('行情截止日與交易日曆不符');
+      const targets = [{ date, close: Number(daily.forecast_close), method: values.priceMethod }];
+      for (const [i, model] of paths.models[code].entries()) {
+        targets.push({ date: dates[i + 1], close: predictClose(model, values.input, Number(daily.previous_close)), method: model.priceMethod });
+      }
+      pending.push({ stock_id: code, trade_date: date, history_through: previous,
+        model_version: paths.version, daily_model_version: daily.model_version, direction: daily.forecast_direction, targets });
+    } catch (error) {
+      await summary(date + ' ' + code + ' 五日預估失敗：' + error.message);
+    }
+  }
   const recorded = clock();
   if (recorded.date !== date || !isPremarketHour(recorded.hour)) {
     throw new Error(`${date} 盤前預測於台灣時間 ${recorded.timestamp} 才完成，超出寫入時段，預測留白。`);
   }
-  for (const [stock, values] of forecasts) {
-    await records.update(date, stock, { ...values, forecast_at: recorded.timestamp });
+  for (const [code, values] of forecasts) {
+    if (gaps.daily.includes(code)) await records.update(date, code, { ...values, forecast_at: recorded.timestamp });
   }
   await records.save();
-  await summary(`${date} 新增 ${forecasts.length} 筆盤前預測。`);
-  const missing = await missingForecasts(records, date, start);
-  if (missing.length) throw new Error(`${date} 盤前預測待補：${missing.join('、')}`);
+  let added = 0;
+  for (const candidate of pending) {
+    const path = { ...candidate, generated_at: recorded.timestamp };
+    if (matchesDaily(path, await records.get(date, path.stock_id))) {
+      edition[path.stock_id] = path;
+      added++;
+    }
+  }
+  // 發布檔已落盤但索引寫入曾失敗時，只修復索引。
+  if (added || gaps.paths.some(code => Object.hasOwn(edition, code))) await saveEdition(records, date, edition);
+  const remaining = await forecastGaps(records, date, symbols);
+  await summary(`${date} 單日預測已齊 ${symbols.length - remaining.daily.length}/${symbols.length}。`);
+  if (date >= firstPathDate) await summary(`五日預估已齊 ${symbols.length - remaining.paths.length}/${symbols.length}，逐檔核對五個目標日與第 1 天 CSV。`);
+  const failures = [];
+  if (remaining.daily.length) failures.push('盤前預測待補：' + remaining.daily.join('、'));
+  if (remaining.paths.length) failures.push('五日預估待補：' + remaining.paths.join('、'));
+  if (failures.length) throw new Error(date + ' ' + failures.join('。'));
+
 }
 
 async function summary(report) {
@@ -210,19 +250,14 @@ async function auditForecasts(date, now, start = indexStart) {
     failure = message;
   } else {
     const records = new MonthlyRecords(recordsDirectory);
-    const missing = [];
-    for (const stock of trackingSymbols(date, start)) {
-      const row = await records.get(date, stock);
-      if (!onTimeForecast(row, date)) {
-        missing.push(stock);
-      }
-    }
-    const total = trackingSymbols(date, start).length;
-    message = `已完成 ${total - missing.length}/${total} 個標的。`;
-    if (missing.length) {
-      failure = `缺漏標的：${missing.join('、')}。`;
-      message = `${message}\n\n${failure}`;
-    }
+    const symbols = trackingSymbols(date, start);
+    const gaps = await forecastGaps(records, date, symbols);
+    message = `單日預測完成 ${symbols.length - gaps.daily.length}/${symbols.length}。`;
+    if (date >= firstPathDate) message += ` 五日預估完成 ${symbols.length - gaps.paths.length}/${symbols.length}。`;
+    const issues = [];
+    if (gaps.daily.length) issues.push('單日缺漏標的：' + gaps.daily.join('、'));
+    if (gaps.paths.length) issues.push('五日缺漏標的：' + gaps.paths.join('、'));
+    if (issues.length) { failure = issues.join('。'); message += '\n\n' + failure; }
   }
 
   await summary(`## ${date} 盤前預測檢查\n\n${message}\n`);
@@ -295,10 +330,19 @@ async function main(mode, requestedDate, option) {
     }
     const task = await recoveryTask(records, now);
     if (!task) return summary(standby ? '上一個交易日的收盤價已齊。' : '無需補跑。');
-    await summary(`${task.date} 缺${task.mode === 'forecast' ? '盤前預測' : '收盤價'}：${task.missing.join('、')}。`);
+    await summary(`${task.date} 缺${task.mode === 'forecast' ? '單日或五日盤前預測' : '收盤價'}：${task.missing.join('、')}。`);
     if (process.env.GITHUB_OUTPUT) {
       await appendFile(process.env.GITHUB_OUTPUT, `trade_date=${task.date}\nmode=${task.mode}\n`);
     }
+    return;
+  }
+  if (mode === 'check-paths') {
+    if (!validDate(requestedDate) || requestedDate < firstPathDate || requestedDate > taipeiClock().date || !await isTradingDate(requestedDate)) throw new Error('無效的五日核對日期');
+    const records = new MonthlyRecords(recordsDirectory);
+    const targets = trackingSymbols(requestedDate);
+    const gaps = await forecastGaps(records, requestedDate, targets);
+    if (gaps.daily.length || gaps.paths.length) throw new Error(`單日缺漏：${gaps.daily.join('、') || '無'}。五日缺漏：${gaps.paths.join('、') || '無'}。`);
+    await summary(`${requestedDate} 核對通過：${targets.length} 個標的、${targets.length * 5} 個目標價，第 1 天與正式 CSV 的價格、方向、版本一致。`);
     return;
   }
   if (mode === 'activate-index') {
@@ -344,6 +388,9 @@ async function main(mode, requestedDate, option) {
 
   const records = new MonthlyRecords(recordsDirectory);
   if (mode === 'forecast') {
+    if (date >= firstPathDate && process.env.GITHUB_OUTPUT) {
+      await appendFile(process.env.GITHUB_OUTPUT, `path_date=${date}\n`);
+    }
     return runForecast(records, date, now);
   } else if (mode === 'close') {
     await runClose(records, date, now.date, date < now.date);

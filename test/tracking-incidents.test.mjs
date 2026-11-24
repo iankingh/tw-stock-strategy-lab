@@ -1,3 +1,5 @@
+import { pathCalendar } from '../shared/five-day.js';
+import { saveEdition } from '../scripts/published-paths.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -34,6 +36,15 @@ test('稽核忽略休市與寬限期，完整交易日不新增異常', async t 
     await records.update(day, stock, { forecast_close: '1', forecast_at: day + ' 07:00:01', actual_close: '2',
       actual_recorded_at: day + ' 17:01:00', model_version: stock === 'TAIEX' ? 'taiex-v1-test' : 'daily-v2-test', previous_close: '1', forecast_direction: '漲' });
   }
+  const { previous, dates } = pathCalendar(day);
+  const edition = {};
+  for (const stock of trackingSymbols(day)) {
+    const row = await records.get(day, stock);
+    edition[stock] = { trade_date: day, stock_id: stock, daily_model_version: row.model_version, model_version: 'five-day-test',
+      history_through: previous, generated_at: row.forecast_at, direction: row.forecast_direction,
+      targets: dates.map(date => ({ date, method: 'previous', close: row.forecast_close })) };
+  }
+  await saveEdition(records, day, edition);
   await auditDay(day, new Date(day + 'T18:00:00+08:00'), onTimeRuns(), records, journal);
   assert.equal(journal.added.length, 0);
 });

@@ -28,6 +28,18 @@ export function features(closes) {
   return [trailingReturn(1), trailingReturn(5), trailingReturn(20), volatility];
 }
 
+/** @param {number[]} input @param {number[]} center @param {number[]} scale @param {number[]} weights */
+function linearScore(input, center, scale, weights) {
+  return input.reduce((sum, value, i) => sum + (value - center[i]) / scale[i] * weights[i + 1], weights[0]);
+}
+
+/** @typedef {{priceMethod:'previous'|'scenario'} | {priceMethod:'ridge',center:number[],scale:number[],ridge:number[]}} PriceModel */
+/** @param {PriceModel} model @param {number[]} input @param {number} previous */
+export function predictClose(model, input, previous) {
+  const change = model.priceMethod === 'ridge' ? linearScore(input, model.center, model.scale, model.ridge) : 0;
+  return Number((previous * (1 + change / 100)).toFixed(2));
+}
+
 /**
  * @param {{center:number[], scale:number[], majority:Direction} &
  *   ({priceMethod:'ridge',ridge:number[]} | {priceMethod:'previous'|'scenario'}) &
@@ -37,15 +49,11 @@ export function features(closes) {
  * @returns {{close:number, direction:Direction}}
  */
 export function predictDaily(model, input, previous) {
-  const x = input.map((value, i) => (value - model.center[i]) / model.scale[i]);
-  /** @param {number[]} weights */
-  const score = weights => x.reduce((sum, value, i) => sum + value * weights[i + 1], weights[0]);
-  const changePct = model.priceMethod === 'ridge' ? score(model.ridge) : 0;
   let label = model.majority;
   if (model.directionMethod === 'persistence') label = direction(input[0]);
   if (model.directionMethod === 'softmax') {
-    const scores = model.softmax.map(score);
+    const scores = model.softmax.map(weights => linearScore(input, model.center, model.scale, weights));
     label = directions[scores.indexOf(Math.max(...scores))];
   }
-  return { close: Number((previous * (1 + changePct / 100)).toFixed(2)), direction: label };
+  return { close: predictClose(model, input, previous), direction: label };
 }

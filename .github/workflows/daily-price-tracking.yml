@@ -101,6 +101,11 @@ jobs:
             git push origin HEAD:main
           fi
           echo "changed=true" >> "$GITHUB_OUTPUT"
+      - name: 核對已保存的五日預估與首日 CSV
+        if: ${{ !cancelled() && steps.collect.outputs.path_date != '' }}
+        env:
+          PATH_DATE: ${{ steps.collect.outputs.path_date }}
+        run: node scripts/daily-price-tracking.mjs check-paths "$PATH_DATE"
       - name: 發布最新行情到 GitHub Pages
         if: ${{ !cancelled() && steps.persist.outputs.changed == 'true' }}
         env:

@@ -1,3 +1,5 @@
+import { firstPathDate, matchesDaily } from '../shared/five-day.js';
+import { readEdition } from './published-paths.mjs';
 import { execFileSync } from 'node:child_process';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -85,15 +87,19 @@ export async function auditDay(day, now, runs, records, journal) {
     }
   }
 
-  for (const [kind, name, cutoff] of [['forecast', '盤前預測', '09:00:00'], ['close', '收盤資料', '18:00:00']]) {
+  const checks = [['forecast', '盤前預測', '09:00:00'], ['close', '收盤資料', '18:00:00']];
+  const edition = day >= firstPathDate ? await readEdition(records, day) : {};
+  if (day >= firstPathDate) checks.push(['path', '五日預估', '09:00:00']);
+  for (const [kind, name, cutoff] of checks) {
     const deadline = day + ' ' + cutoff;
     if (local(now) < deadline) continue;
     const missingAtDeadline = [];
     const recorded = [];
     for (const stock of trackingSymbols(day)) {
       const row = await records.get(day, stock);
-      const stamp = kind === 'forecast' ? row?.forecast_at : row?.actual_recorded_at;
-      const valid = kind === 'forecast' ? onTimeForecast(row, day) : Number(row?.actual_close) > 0;
+      const path = edition[stock];
+      const stamp = kind === 'path' ? path?.generated_at : kind === 'forecast' ? row?.forecast_at : row?.actual_recorded_at;
+      const valid = kind === 'path' ? matchesDaily(path, row) : kind === 'forecast' ? onTimeForecast(row, day) : Number(row?.actual_close) > 0;
       if (valid && stamp) recorded.push(stamp);
       if (!valid || !stamp || stamp > deadline) missingAtDeadline.push(stock);
     }
@@ -101,8 +107,9 @@ export async function auditDay(day, now, runs, records, journal) {
       const added = await journal.add(day, kind + '-missing', name, '期限內缺資料', local(now), cutoff + ' 截止時缺 ' + missingAtDeadline.join('、') + '。');
       if (added && recorded.length < trackingSymbols(day).length) journal.newGaps++;
     }
-    if (recorded.length === trackingSymbols(day).length && (missingAtDeadline.length || affected.has(kind) || await journal.has(day, kind + '-missing'))) {
-      await journal.add(day, kind + '-complete', name, '資料已齊', recorded.sort().at(-1), '依每月 CSV 的實際取得時間核對。');
+    const firstEdition = kind === 'path' && day === firstPathDate;
+    if (recorded.length === trackingSymbols(day).length && (firstEdition || missingAtDeadline.length || affected.has(kind === 'path' ? 'forecast' : kind) || await journal.has(day, kind + '-missing'))) {
+      await journal.add(day, kind + '-complete', name, '資料已齊', recorded.sort().at(-1), kind === 'path' ? `已核對 ${recorded.length} 個標的、${recorded.length * 5} 個目標價及首日 CSV。` : '依每月 CSV 的實際取得時間核對。');
     }
   }
 }

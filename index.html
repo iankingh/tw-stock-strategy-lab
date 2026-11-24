@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>台股複合交易策略工作站 — 葛蘭碧八大法則 × 布林 × MACD × 關鍵K線</title>
   <link rel="stylesheet" href="./assets/workstation.css" />
+  <link rel="stylesheet" href="./assets/price-trend.css" />
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap');
 
@@ -150,6 +151,25 @@
       </div>
     </section>
 
+    <section id="price-trend" aria-labelledby="trend-heading">
+      <div class="trend-chart">
+        <div class="trend-head"><h2 id="trend-heading">收盤與盤前預估</h2><span>最近 56 個交易日</span></div>
+        <div class="trend-legend"><span>實際收盤</span><span>單日盤前預估</span><span>五日預估</span></div>
+        <svg id="trend-plot" tabindex="0" role="group" aria-label="收盤價格走勢，點選日期或使用左右方向鍵"></svg>
+        <div class="trend-selection"><label>交易日 <select id="trend-date"></select></label><output id="trend-readout" aria-live="polite"></output></div>
+        <p id="trend-history-status" role="status"></p>
+      </div>
+      <div class="trend-outlook">
+        <h2>未來五日預估</h2>
+        <p id="path-status" role="status">讀取盤前發布紀錄…</p>
+        <div id="path-edition" hidden>
+          <p id="path-meta"></p>
+          <table><thead><tr><th>目標交易日</th><th>預估收盤</th><th>方法</th></tr></thead><tbody id="path-targets"></tbody></table>
+        </div>
+      </div>
+    </section>
+    <details id="technical-view">
+      <summary class="chart-button">歷史日 K 與技術分析</summary>
     <div class="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-12">
         <section class="min-w-0 rounded-xl border border-slate-800 bg-[#131722] p-3 md:p-4 xl:col-span-8" aria-label="日 K 圖表">
           <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -259,6 +279,7 @@
       <div id="granville-matrix-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3"></div>
     </section>
 
+    </details>
   </main>
 
   <!-- ============================================================================ -->

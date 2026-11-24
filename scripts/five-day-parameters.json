@@ -1,0 +1,160 @@
+{
+  "version": "five-day-v1-b7bbc775e6",
+  "models": {
+    "2312": [
+      {
+        "priceMethod": "previous"
+      },
+      {
+        "priceMethod": "previous"
+      },
+      {
+        "priceMethod": "previous"
+      },
+      {
+        "priceMethod": "previous"
+      }
+    ],
+    "2317": [
+      {
+        "priceMethod": "previous"
+      },
+      {
+        "priceMethod": "previous"
+      },
+      {
+        "priceMethod": "previous"
+      },
+      {
+        "priceMethod": "previous"
+      }
+    ],
+    "2330": [
+      {
+        "priceMethod": "previous"
+      },
+      {
+        "priceMethod": "previous"
+      },
+      {
+        "priceMethod": "previous"
+      },
+      {
+        "priceMethod": "previous"
+      }
+    ],
+    "2603": [
+      {
+        "priceMethod": "previous"
+      },
+      {
+        "priceMethod": "previous"
+      },
+      {
+        "priceMethod": "previous"
+      },
+      {
+        "priceMethod": "previous"
+      }
+    ],
+    "3231": [
+      {
+        "priceMethod": "previous"
+      },
+      {
+        "priceMethod": "previous"
+      },
+      {
+        "priceMethod": "previous"
+      },
+      {
+        "priceMethod": "previous"
+      }
+    ],
+    "3481": [
+      {
+        "priceMethod": "previous"
+      },
+      {
+        "priceMethod": "previous"
+      },
+      {
+        "priceMethod": "previous"
+      },
+      {
+        "priceMethod": "previous"
+      }
+    ],
+    "TAIEX": [
+      {
+        "priceMethod": "previous"
+      },
+      {
+        "priceMethod": "ridge",
+        "center": [
+          0.09301411370296522,
+          0.4585871773872263,
+          1.9752856224452113,
+          0.9590303052017526
+        ],
+        "scale": [
+          1.0778941537103752,
+          2.298989210123684,
+          4.2070950646373575,
+          0.45850643605042113
+        ],
+        "ridge": [
+          0.2759653438169709,
+          0.002131504171941305,
+          -0.10596472342947758,
+          -0.1312325201165383,
+          0.04842020848437685
+        ]
+      },
+      {
+        "priceMethod": "ridge",
+        "center": [
+          0.09296499762085125,
+          0.45658789420699925,
+          1.9703048247608934,
+          0.9589261085572999
+        ],
+        "scale": [
+          1.079072312586693,
+          2.3011053912344055,
+          4.210346392603214,
+          0.45900239352171807
+        ],
+        "ridge": [
+          0.3716245318012342,
+          0.006812333278040025,
+          -0.12051620924412416,
+          -0.16550773414294473,
+          0.04182832092824223
+        ]
+      },
+      {
+        "priceMethod": "ridge",
+        "center": [
+          0.09222139961539909,
+          0.4571020994805769,
+          1.9659326928875553,
+          0.9588145746352931
+        ],
+        "scale": [
+          1.080137891865385,
+          2.3036009242681637,
+          4.213924059824416,
+          0.45949922395827436
+        ],
+        "ridge": [
+          0.46579681811078016,
+          -0.005312667245735685,
+          -0.10408570913807703,
+          -0.21346838238144158,
+          0.03417208642644201
+        ]
+      }
+    ]
+  }
+}
