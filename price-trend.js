@@ -2,14 +2,40 @@ import { firstPathDate, matchesDaily } from './shared/five-day.js';
 import { onTimeForecast } from './shared/premarket.js';
 import { isTradingDate, shiftDate, taipeiClock, validDate } from './shared/trading-calendar.js';
 
-export function historyDates(today) {
+export function historyDates(today, archive) {
   const days = [];
   for (let day = today; days.length < 56; day = shiftDate(day, -1)) {
-    const open = isTradingDate(day);
+    const open = archive && day >= archive.first && day <= archive.last ? archive.rows.has(day) : isTradingDate(day);
     if (open === null) break;
     if (open) days.push(day);
   }
   return days.reverse();
+}
+
+// 封存檔的每一列是一個已核對的市場交易日；單一股票缺值仍保留該日。
+export function parseCloseArchive(text) {
+  const [header, ...lines] = text.trimEnd().split(/\r?\n/);
+  const columns = header.split(',');
+  const rows = new Map();
+  for (const line of lines) {
+    const [date, ...prices] = line.split(',');
+    rows.set(date, prices.map(value => Number(value) > 0 ? Number(value) : null));
+  }
+  return { columns: columns.slice(1), rows, first: lines[0].slice(0, 10), last: lines.at(-1).slice(0, 10) };
+}
+
+let archiveRequest;
+function loadCloseArchive() {
+  if (!archiveRequest) {
+    archiveRequest = fetch('research/history.csv', { signal: AbortSignal.timeout(8000) }).then(async res => {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return parseCloseArchive(await res.text());
+    }).catch(() => {
+      archiveRequest = null;
+      return null;
+    });
+  }
+  return archiveRequest;
 }
 
 async function archiveJSON(name) {
@@ -19,7 +45,8 @@ async function archiveJSON(name) {
 }
 
 export async function loadTrend(code, today, fetchRecords) {
-  const months = [...new Set(historyDates(today).map(d => d.slice(0, 7)))];
+  const archive = historyDates(today)[0] <= '2026-11-17' ? await loadCloseArchive() : null;
+  const months = [...new Set(historyDates(today, archive).map(d => d.slice(0, 7)))];
   async function latestPath() {
     const index = await archiveJSON('latest');
     const date = index[code];
@@ -36,14 +63,15 @@ export async function loadTrend(code, today, fetchRecords) {
   ]);
   const rows = history.flatMap(result => result.status === 'fulfilled' ? result.value : []);
   return {
-    rows: rows.filter(row => row.stock_id === code),
+    archive, rows: rows.filter(row => row.stock_id === code),
     historyError: history.some(result => result.status === 'rejected'),
     ...edition
   };
 }
 
-export function trendPoints(date, code, candles, rows, path) {
-  const days = historyDates(date);
+export function trendPoints(date, code, candles, rows, path, archive) {
+  const days = historyDates(date, archive);
+  const column = archive?.columns.indexOf(code);
   const actuals = new Map(candles.map(bar => [bar.date.replaceAll('/', '-'), bar.close]));
   const records = new Map(rows.filter(r => r.stock_id === code).map(r => [r.trade_date, r]));
   const future = new Map(path?.targets.map(t => [t.date, t.close]) ?? []);
@@ -51,7 +79,7 @@ export function trendPoints(date, code, candles, rows, path) {
   return dates.map(day => {
     const row = records.get(day);
     const valid = onTimeForecast(row, day);
-    return { date: day, actual: row?.actual_close ?? actuals.get(day) ?? null,
+    return { date: day, actual: row?.actual_close ?? actuals.get(day) ?? archive?.rows.get(day)?.[column] ?? null,
       daily: valid ? row.forecast_close : null, direction: valid ? row.forecast_direction : null, path: future.get(day) ?? null };
   });
 }
@@ -135,7 +163,7 @@ export function renderTrend(code, today, data, candles) {
   context = code + today;
   currentCode = code;
   const path = data?.path;
-  points = trendPoints(today, code, candles, data?.rows ?? [], path);
+  points = trendPoints(today, code, candles, data?.rows ?? [], path, data?.archive);
   const selector = el('trend-date');
   selector.replaceChildren(...points.map(p => new Option(p.date, p.date)));
   el('trend-history-status').textContent = data?.historyError ? '部分月份讀取失敗，重新整理可再次查詢。' :

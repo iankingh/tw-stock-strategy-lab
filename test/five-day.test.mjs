@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { pathCalendar, matchesDaily } from '../shared/five-day.js';
 import { taipeiClock } from '../shared/trading-calendar.js';
 import { parseCSVToJSON } from '../shared/data-parser.js';
-import { historyDates, trendPoints } from '../price-trend.js';
+import { historyDates, parseCloseArchive, trendPoints } from '../price-trend.js';
 import { readEdition, forecastGaps } from '../scripts/published-paths.mjs';
 import { runForecast, recoveryTask, trackingSymbols } from '../scripts/daily-price-tracking.mjs';
 import { auditDay, Journal } from '../scripts/tracking-incidents.mjs';
@@ -40,6 +40,16 @@ test('已發布的 11/24 台積電預估、方向與實收同時可讀，11/23 �
   assert.deepEqual(points.at(-1), {date:'2026-11-24',actual:2230,daily:2030,direction:'漲',path:null});
   assert.equal(points.at(-2).actual, 2030);
   assert.equal(points.at(-2).daily, null);
+});
+
+test('外部日 K 延遲時，同源快照與月檔仍提供最近 56 個實際交易日的收盤', async () => {
+  const archive = parseCloseArchive(await readFile(new URL('../research/history.csv', import.meta.url), 'utf8'));
+  const rows = parseCSVToJSON(await readFile(new URL('../data/daily-price-tracking/2026-11.csv', import.meta.url), 'utf8'));
+  const points = trendPoints('2026-11-24','2330',[],rows,null,archive);
+  assert.equal(points.length,56);
+  assert.ok(points.every(p => p.actual > 0));
+  assert.ok(points.filter(p => p.date < '2026-11-17').every(p => p.daily === null));
+  assert.equal(points[0].date,'2026-09-01');
 });
 
 test('盤前部分失敗可只補五日線，首日沿用既有 CSV，七檔重跑都保留原時間', async t => {
