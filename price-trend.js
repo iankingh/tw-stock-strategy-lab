@@ -113,6 +113,23 @@ function select(date) {
   draw();
 }
 
+// 在五日表格上方放大已發布的五個點，與 56 日比較圖共用同一批數值。
+function drawOutlook(targets) {
+  const prices = targets.map(target => target.close);
+  const low = Math.min(...prices), high = Math.max(...prices);
+  const padding = Math.max((high - low) * 0.15, high * 0.001, 0.01);
+  const y = price => 72 - (price - low + padding) / (high - low + 2 * padding) * 60;
+  const locations = prices.map((price, i) => [12 + i * 59, y(price)]);
+  const guides = (low === high ? [low] : [high, low]).map(price => {
+    const yy = y(price);
+    return `<path d="M8 ${yy} H252" stroke="#334155"/><text x="258" y="${yy + 4}">${number(price)}</text>`;
+  });
+  const line = locations.map(point => point.join(',')).join(' ');
+  const dots = locations.map(([x, yy]) => `<circle cx="${x}" cy="${yy}" r="4" fill="#131722" stroke="#c4b5fd"/>`);
+  el('path-plot').innerHTML = `<g font-size="10" font-family="monospace" fill="#aebbd0">${guides.join('')}</g>
+    <polyline points="${line}" fill="none" stroke="#c4b5fd" stroke-width="2"/>${dots.join('')}`;
+}
+
 export function renderTrend(code, today, data, candles) {
   const changed = context !== code + today;
   context = code + today;
@@ -131,6 +148,7 @@ export function renderTrend(code, today, data, candles) {
     isTradingDate(today) === false ? '今日休市。' : today < firstPathDate ? '首個五日預估發布日為 ' + firstPathDate + '。' :
     path?.trade_date === today ? '今日盤前已發布' : clock.hour >= 9 ? '今日已截止，缺少五日預估。' : '今日尚無五日預估。';
   if (!path) return;
+  drawOutlook(path.targets);
   el('path-meta').textContent = '發布 ' + path.generated_at + '（台灣） · 行情截至 ' + path.history_through;
   const trs = path.targets.map(t => {
     const tr = document.createElement('tr');
