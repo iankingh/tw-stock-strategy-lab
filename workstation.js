@@ -237,7 +237,7 @@ function getCurrentStock() {
 // 4. K 線形態偵測與技術指標 + 未來 2 個月預測演算法
 // ==========================================
 function enrichCandlesWithIndicatorsAndForecast(rawCandles, maPeriod, bbStdMult, manualPrice, index = false) {
-  const futureDates = !index && rawCandles.length >= maPeriod ? futureTradingDates(rawCandles.at(-1).date) : [];
+  const futureDates = rawCandles.length >= maPeriod ? futureTradingDates(rawCandles.at(-1).date) : [];
   const forecastCount = futureDates.length;
   const historyBars = rawCandles.map((c, idx) => ({
     index: idx,
@@ -327,9 +327,12 @@ function enrichCandlesWithIndicatorsAndForecast(rawCandles, maPeriod, bbStdMult,
 
 function generateDemoDataset(code, maPeriod, bbStdMult, manualPrice) {
   const seedPrice = ((parseInt(code, 10) || 2330) % 85) + 18;
-  const preset = STOCK_PRESETS[code] || {
-    basePrice: seedPrice, peakPrice: seedPrice * 1.24, dipPrice: seedPrice * 0.86
-  };
+  const latestIndex = code === 'TAIEX' ? state.liveCandlesMap.TAIEX?.at(-1)?.close : null;
+  const preset = STOCK_PRESETS[code] || (code === 'TAIEX'
+    ? (latestIndex
+        ? { basePrice: latestIndex * 0.9, peakPrice: latestIndex, dipPrice: latestIndex * 0.84 }
+        : { basePrice: 36000, peakPrice: 40500, dipPrice: 33500 })
+    : { basePrice: seedPrice, peakPrice: seedPrice * 1.24, dipPrice: seedPrice * 0.86 });
   const scale = manualPrice ? manualPrice / preset.peakPrice : 1;
   const basePrice = preset.basePrice * scale;
   const peakPrice = preset.peakPrice * scale;
@@ -525,10 +528,10 @@ function rebuildAndRenderAll() {
   }
   state.currentBarIndex = state.chartData.findIndex((bar) => bar.isCurrent);
   const hasData = state.currentBarIndex !== -1;
-  document.getElementById('manual-price-details').hidden = !hasData || isMarketIndex();
+  document.getElementById('manual-price-details').hidden = !hasData;
   document.getElementById('mobile-market-home').hidden = isMarketIndex();
-  document.getElementById('chart-modes').hidden = isMarketIndex();
-  document.getElementById('scenario-panel').hidden = isMarketIndex();
+  document.getElementById('chart-modes').hidden = false;
+  document.getElementById('scenario-panel').hidden = false;
   for (const button of document.querySelectorAll('[data-download]')) {
     button.disabled = !hasData;
   }
@@ -542,7 +545,7 @@ function rebuildAndRenderAll() {
   renderFilterButtons();
   renderChartDataSource();
   if (!state.chartData.some(bar => bar.date === state.selectedBarDate)) state.selectedBarDate = null;
-  if (!isMarketIndex()) renderScenarioCards();
+  renderScenarioCards();
   renderBottomMatrix();
   renderChartSelection();
   refreshTrend();
@@ -582,19 +585,15 @@ function renderChartDataSource() {
     badge.textContent = `${provider} 最近交易日 ${lastDate}`;
   }
 
-  if (isMarketIndex()) {
-    source.textContent = baseCandle ? `證交所歷史日 K（點）截至 ${lastDate}` :
-      cached ? `${failure}，請重新整理。` : '正在載入證交所歷史日 K。';
-    return;
-  }
   if (!baseCandle) {
     source.textContent = cached
       ? `${failure}。可重新查詢、選擇其他標的，或開啟葛蘭碧全週期示範。`
-      : '正在載入 FinMind 歷史日 K。';
+      : `正在載入 ${provider} 歷史日 K。`;
     return;
   }
 
-  const historyLabel = cached ? '快取的 FinMind 歷史日 K' : 'FinMind 歷史日 K';
+  const unitLabel = isMarketIndex() ? '（點）' : '';
+  const historyLabel = cached ? `快取的 ${provider} 歷史日 K${unitLabel}` : `${provider} 歷史日 K${unitLabel}`;
   const manualLabel = baseCandle.source === 'manual' ? '，基準價已手動校正' : '';
   const hasForecast = state.chartData.at(-1).isForecast;
   if (state.quoteStatus === 'ready' && !manualLabel && hasForecast) source.classList.add('hidden', 'md:block');
@@ -1240,7 +1239,7 @@ function renderScenarioCards() {
       class="flex min-h-11 w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-700 px-3 py-1.5 text-left hover:border-amber-400">
       <span><span class="font-semibold text-slate-100">${GRANVILLE_RULES_INFO[bar.rule].shortLabel}</span>
       <span class="block font-mono text-slate-400">${bar.date}</span></span>
-      <strong class="font-mono text-amber-300">$${formatIndicator(bar.close)}</strong>
+      <strong class="font-mono text-amber-300">${displayLevel(bar.close, true)}</strong>
     </button>`
   ).join('');
   if (!points.length) container.textContent = '這段期間沒有情境點';
@@ -1300,7 +1299,7 @@ function selectStock(code, name) {
   document.getElementById('price-trend').hidden = !tracked;
   const technical = document.getElementById('technical-view');
   technical.open = !tracked;
-  technical.querySelector('summary').textContent = code === 'TAIEX' ? '歷史日 K 與技術分析' : '歷史日 K、44 日教學情境與技術分析';
+  technical.querySelector('summary').textContent = '歷史日 K、44 日教學情境與技術分析';
   state.chartMode = 'RECENT_FORECAST';
   state.selectedBarDate = null;
   state.hoveredIndex = null;
@@ -1325,7 +1324,7 @@ function renderModeButtons() {
 }
 
 function setChartMode(mode) {
-  if (isMarketIndex() || state.chartMode === mode) return;
+  if (state.chartMode === mode) return;
   state.chartMode = mode;
   if (mode === 'RECENT_FORECAST' && state.premarket?.date !== todayInTaipei()) loadPremarket(state.selectedStockCode);
   state.selectedBarDate = null;
@@ -1449,7 +1448,7 @@ function exportChartDataCSV() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = isMarketIndex() ? 'TAIEX_歷史日K.csv' : `${stock.code}_${stock.name}_葛蘭碧2個月預測報表.csv`;
+  a.download = `${stock.code}_${stock.name}_葛蘭碧2個月預測報表.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -1593,7 +1592,7 @@ window.addEventListener('DOMContentLoaded', () => {
     rebuildAndRenderAll();
     document.getElementById('manual-price-details').open = false;
     document.querySelector('#manual-price-details summary').focus();
-    showToast(`基準價已校正為 $${formatIndicator(price)}。`);
+    showToast(`基準價已校正為 ${displayLevel(price, true)}。`);
   });
 
   selectStock(state.selectedStockCode);

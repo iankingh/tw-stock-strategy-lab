@@ -16,7 +16,7 @@ function workstation() {
   let download;
   const document = {
     getElementById(id) {
-      if (!elements.has(id)) elements.set(id, { style: {}, classList: { remove() {} } });
+      if (!elements.has(id)) elements.set(id, { style: {}, classList: { remove() {} }, prepend() {} });
       return elements.get(id);
     },
     createElement: () => ({ click() {} }),
@@ -169,4 +169,36 @@ test('台灣跨月午夜的交易日、星期及 JSON 時間一致', async () =>
   app.ctx.bars = app.chart([100], 20);
   vm.runInContext('state.chartData = bars; state.currentBarIndex = 0; exportStrategyJSON()', app.ctx);
   assert.equal((await app.exported()).exportedAt, '2026-12-01T00:00:00.123+08:00');
+});
+
+test('大盤具備足夠歷史日 K 時套用共用 44 日預測模型、點位卡片與全週期示範', async () => {
+  const app = workstation();
+  const closes = Array.from({ length: 25 }, (_, i) => 38000 + i * 80);
+  app.ctx.raw = closes.map((close, i) => ({
+    open: close, close, high: close, low: close, volume: 1000,
+    date: calendar.shiftDate('2026-10-01', i).replaceAll('-', '/')
+  }));
+  vm.runInContext(`
+    state.selectedStockCode = 'TAIEX';
+    state.liveCandlesMap.TAIEX = raw;
+    state.chartData = enrichCandlesWithIndicatorsAndForecast(raw, 20, 2, undefined, true);
+    state.currentBarIndex = state.chartData.findIndex(b => b.isCurrent);
+    renderScenarioCards();
+    exportStrategyJSON();
+  `, app.ctx);
+  const forecast = vm.runInContext('state.chartData.filter(b => b.isForecast)', app.ctx);
+  const history = vm.runInContext('state.chartData.filter(b => !b.isForecast)', app.ctx);
+  assert.equal(forecast.length, 44);
+  assert.ok(history.every(b => b.source === 'twse'));
+  assert.ok(forecast.every(b => b.source === 'forecast'));
+  assert.deepEqual(Array.from(forecast, b => b.close), forecastClosePath(closes, 44, 20));
+  assert.deepEqual(Array.from(forecast.filter(b => b.isPresetScenario), b => b.rule), ['B2', 'B3', 'S4']);
+  const cardsHtml = app.document.getElementById('scenario-cards-container').innerHTML;
+  assert.match(cardsHtml, /點/);
+  assert.doesNotMatch(cardsHtml, /\$/);
+  const payload = await app.exported();
+  assert.equal(payload.stock.unit, '點');
+  assert.equal(payload.twoMonthForecastEnd, forecast.at(-1).date);
+  const demo = vm.runInContext("generateDemoDataset('TAIEX', 20, 2)", app.ctx);
+  assert.ok(demo.every(b => b.close > 20000));
 });
