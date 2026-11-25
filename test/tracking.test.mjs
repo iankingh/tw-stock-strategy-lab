@@ -9,7 +9,7 @@ import { findPremarketRecord } from '../shared/premarket.js';
 import { taipeiClock } from '../shared/trading-calendar.js';
 import { datedTWSEPrices, symbols } from '../scripts/price-tracking-market.mjs';
 import { livePerformance } from '../scripts/live-performance.mjs';
-import parameters from '../scripts/daily-model-parameters.json' with { type: 'json' };
+import { defaultMAPeriod, forecastClosePath, version as forecastVersion } from '../shared/forecast-model.js';
 
 async function tempRecords(t) {
   const dir = await mkdtemp(join(tmpdir(), 'stock-tracking-'));
@@ -92,8 +92,10 @@ test('正式預測採用截至昨收的日 K，補跑不覆寫，逾時與資料
   const disk = new MonthlyRecords(records.directory);
   assert.equal(await disk.get(day, '2312'), undefined);
   const first = await disk.get(day, '2330');
+  const expected2330Closes = input.map(line => line.split(',')).filter(([date]) => date <= '2026-11-16').slice(-21).map(row => Number(row[1 + symbols.indexOf('2330')]));
   assert.equal(first.previous_close, 2215);
-  assert.equal(first.model_version, parameters.version);
+  assert.equal(first.forecast_close, forecastClosePath(expected2330Closes, 1, defaultMAPeriod)[0]);
+  assert.equal(first.model_version, forecastVersion);
   assert.ok(onTimeForecast(first, day));
   assert.equal(onTimeForecast({ ...first, forecast_direction: '' }, day), false);
   staleStock = '';
@@ -189,13 +191,13 @@ test('晚間補抓延遲跨午夜時對應原交易日與原月份', () => {
 test('準時率包含全日缺席，價差與方向只計入已配對的實盤紀錄', async t => {
   const records = await tempRecords(t);
   const day = '2026-11-20';
-  const row = { previous_close: '10', forecast_close: '10', forecast_direction: '漲', forecast_at: day + ' 07:00:00', model_version: parameters.version };
+  const row = { previous_close: '10', forecast_close: '10', forecast_direction: '漲', forecast_at: day + ' 07:00:00', model_version: forecastVersion };
   for (const stock of symbols) await records.update(day, stock, row);
   await records.update(day, '2330', { actual_close: '11' });
   await records.update('2026-11-23', '2312', { ...row, forecast_at: '2026-11-23 09:05:00' });
   const result = await livePerformance(records, day, '2026-11-24');
   assert.deepEqual([result.days, result.complete, result.timely], [3, 1, 6]);
-  assert.deepEqual(result.versions.get(parameters.version), {
+  assert.deepEqual(result.versions.get(forecastVersion), {
     onTime: 6, scored: 1, abs: 1, pct: 10, normalized: 1, correct: 1, classified: 1
   });
 });

@@ -1,4 +1,3 @@
-import { loadTrend, bindTrend, renderTrend } from './price-trend.js';
 import * as calendar from './shared/trading-calendar.js';
 import { forecastClosePath } from './shared/forecast-model.js';
 import { computeTechnicalIndicators, applyBaselineRule } from './shared/indicators.js';
@@ -548,14 +547,6 @@ function rebuildAndRenderAll() {
   renderScenarioCards();
   renderBottomMatrix();
   renderChartSelection();
-  refreshTrend();
-}
-
-function refreshTrend() {
-  const code = state.selectedStockCode;
-  if (code !== 'TAIEX' && !Object.hasOwn(STOCK_PRESETS, code)) return;
-  const request = state.premarket;
-  renderTrend(code, todayInTaipei(), request?.code === code ? request.trend : null, state.liveCandlesMap[code] ?? []);
 }
 
 function renderChartDataSource() {
@@ -727,17 +718,6 @@ async function loadPremarket(code) {
       if (!cache.has(key)) cache.set(key, fetchMonth(key));
       return cache.get(key);
     };
-    if (code === 'TAIEX' || Object.hasOwn(STOCK_PRESETS, code)) {
-      loadTrend(code, date, fetchRecords).then(trend => {
-        if (state.premarket !== request) return;
-        request.trend = trend;
-        refreshTrend();
-      }).catch(() => {
-        if (state.premarket !== request) return;
-        request.trend = { rows: [], pathError: true, historyError: true };
-        refreshTrend();
-      });
-    }
     const rows = await fetchRecords(month);
     request.record = closed ? null : findPremarketRecord(rows, date, code);
     const close = findRecordedClose(rows, date, code);
@@ -1295,11 +1275,6 @@ function setStockControls(open) {
 function selectStock(code, name) {
   if (name) state.stockNames[code] = name;
   state.selectedStockCode = code;
-  const tracked = code === 'TAIEX' || Object.hasOwn(STOCK_PRESETS, code);
-  document.getElementById('price-trend').hidden = !tracked;
-  const technical = document.getElementById('technical-view');
-  technical.open = !tracked;
-  technical.querySelector('summary').textContent = '歷史日 K、44 日教學情境與技術分析';
   state.chartMode = 'RECENT_FORECAST';
   state.selectedBarDate = null;
   state.hoveredIndex = null;
@@ -1497,7 +1472,6 @@ function exportStrategyJSON() {
 // 8. 事件綁定與初始化啟動
 // ==========================================
 window.addEventListener('DOMContentLoaded', () => {
-  bindTrend();
   document.addEventListener('click', event => {
     const button = event.target.closest('button');
     if (!button || button.disabled) return;

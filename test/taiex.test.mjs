@@ -8,6 +8,7 @@ import { MonthlyRecords } from '../scripts/price-tracking-records.mjs';
 import { onTimeForecast, runForecast, runClose, checkCloses, trackingSymbols } from '../scripts/daily-price-tracking.mjs';
 import { livePerformance } from '../scripts/live-performance.mjs';
 import { symbols } from '../scripts/price-tracking-market.mjs';
+import { defaultMAPeriod, forecastClosePath, version as forecastVersion } from '../shared/forecast-model.js';
 
 const fields = ['日期', '開盤指數', '最高指數', '最低指數', '收盤指數'];
 test('證交所月報依欄名解析，跨月補抓保留較新行情，舊快照不混入預測', async t => {
@@ -46,9 +47,11 @@ test('啟用日起大盤獨立計分，逾時留白、重跑保留預測、收�
   assert.equal(await records.get(day, 'TAIEX'), undefined);
   await runForecast(records, day, early, undefined, () => early, day);
   const row = await records.get(day, 'TAIEX');
+  const taiexCloses = (await barsThrough('2026-11-17', false)).slice(-21).map(bar => bar.close);
   assert.equal(row.previous_close, 40092.11);
+  assert.equal(row.forecast_close, forecastClosePath(taiexCloses, 1, defaultMAPeriod)[0]);
   assert.equal(row.forecast_at, early.timestamp);
-  assert.match(row.model_version, /^taiex-v1-/);
+  assert.equal(row.model_version, forecastVersion);
   assert.equal(onTimeForecast(row, day), true);
   assert.equal(onTimeForecast({ ...row, forecast_direction: '' }, day), false);
   await runForecast(records, day, late, undefined, () => late, day);

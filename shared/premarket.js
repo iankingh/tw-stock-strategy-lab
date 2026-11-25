@@ -15,9 +15,10 @@ export function onTimeForecast(row, date) {
   if (!row || row.trade_date !== date || row.forecast_close === null || row.forecast_close <= 0 || !Number.isFinite(row.forecast_close)) return false;
   const match = /^(\d{4}-\d\d-\d\d) (\d\d):[0-5]\d:[0-5]\d$/.exec(row.forecast_at ?? '');
   if (!match || match[1] !== date || !isPremarketHour(Number(match[2])) || isTradingDate(date) === false) return false;
-  if (row.stock_id === 'TAIEX' && !row.model_version?.startsWith('taiex-v1-')) return false;
+  const modernModel = row.model_version?.startsWith('daily-') || row.model_version?.startsWith('workstation-ma20-');
+  if (row.stock_id === 'TAIEX' && !row.model_version?.startsWith('taiex-v1-') && !row.model_version?.startsWith('workstation-ma20-')) return false;
   // 舊版個股紀錄可能只有價格。現代模型或有方向的紀錄必須可獨立評分。
-  if (row.stock_id !== 'TAIEX' && !row.model_version?.startsWith('daily-') && row.forecast_direction === null) return true;
+  if (row.stock_id !== 'TAIEX' && !modernModel && row.forecast_direction === null) return true;
   return row.previous_close !== null && row.previous_close > 0 &&
     isDirection(row.forecast_direction);
 }

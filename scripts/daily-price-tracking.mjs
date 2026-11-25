@@ -2,13 +2,11 @@ import { isPremarketHour, onTimeForecast, premarketStartHour } from '../shared/p
 import { setTimeout as sleep } from 'node:timers/promises';
 import { appendFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import indexParameters from './taiex-model-parameters.json' with { type: 'json' };
 import { barsThrough, readStart, activationDate, activationFile } from './taiex.mjs';
-import parameters from './daily-model-parameters.json' with { type: 'json' };
 import { firstPathDate, pathCalendar, matchesDaily } from '../shared/five-day.js';
 import { forecastGaps, readEdition, saveEdition } from './published-paths.mjs';
-import paths from './five-day-parameters.json' with { type: 'json' };
-import { features, predictDaily, predictClose } from '../shared/daily-model.js';
+import { direction } from '../shared/daily-model.js';
+import { defaultMAPeriod, forecastClosePath, version as forecastVersion } from '../shared/forecast-model.js';
 import { MonthlyRecords } from './price-tracking-records.mjs';
 import {
   datedTWSEPrices, finMindPrices, historicalTWSEClose, isTradingDate, latestTWSEPrices, previousTradingDate, shiftDate, symbols, taipeiClock
@@ -26,7 +24,6 @@ export function trackingSymbols(date, start = indexStart) {
 
 async function forecastFor(stock, previous, persist, expected) {
   const index = stock === 'TAIEX';
-  const deployment = index ? indexParameters : parameters;
   const series = index
     ? new Map((await barsThrough(previous, persist)).map(row => [row.date, row.close]))
     : await finMindPrices(stock, shiftDate(previous, -120), previous);
@@ -36,13 +33,13 @@ async function forecastFor(stock, previous, persist, expected) {
   }
   const closes = dates.slice(-21).map((date) => Number(series.get(date).toFixed(2)));
   const previousClose = closes.at(-1);
-  const model = { ...deployment.models[stock], priceMethod: deployment.priceMethod, directionMethod: deployment.directionMethod };
-  const input = features(closes);
-  const prediction = predictDaily(model, input, previousClose);
+  const pathCloses = forecastClosePath(closes, 5, defaultMAPeriod);
+  const forecastClose = pathCloses[0];
   return {
-    forecast_close: prediction.close.toFixed(2), previous_close: previousClose.toFixed(2),
-    forecast_direction: prediction.direction, model_version: deployment.version,
-    input, history_through: previous, complete_window: !expected || expected.every(day => series.has(day)), priceMethod: deployment.priceMethod
+    forecast_close: forecastClose.toFixed(2), previous_close: previousClose.toFixed(2),
+    forecast_direction: direction(forecastClose - previousClose), model_version: forecastVersion,
+    path_closes: pathCloses, history_through: previous,
+    complete_window: !expected || expected.every(day => series.has(day)), priceMethod: 'scenario'
   };
 }
 
@@ -198,11 +195,11 @@ export async function runForecast(records, date, started, collect = collectForec
       if (!values.complete_window) throw new Error('缺少連續 21 個交易日收盤');
       if (values.history_through !== previous) throw new Error('行情截止日與交易日曆不符');
       const targets = [{ date, close: Number(daily.forecast_close), method: values.priceMethod }];
-      for (const [i, model] of paths.models[code].entries()) {
-        targets.push({ date: dates[i + 1], close: predictClose(model, values.input, Number(daily.previous_close)), method: model.priceMethod });
+      for (let i = 1; i < 5; i++) {
+        targets.push({ date: dates[i], close: values.path_closes[i], method: values.priceMethod });
       }
       pending.push({ stock_id: code, trade_date: date, history_through: previous,
-        model_version: paths.version, daily_model_version: daily.model_version, direction: daily.forecast_direction, targets });
+        model_version: forecastVersion, daily_model_version: daily.model_version, direction: daily.forecast_direction, targets });
     } catch (error) {
       await summary(date + ' ' + code + ' 五日預估失敗：' + error.message);
     }

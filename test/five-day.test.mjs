@@ -11,15 +11,15 @@ import { readEdition, forecastGaps } from '../scripts/published-paths.mjs';
 import { runForecast, recoveryTask, trackingSymbols } from '../scripts/daily-price-tracking.mjs';
 import { auditDay, Journal } from '../scripts/tracking-incidents.mjs';
 import { MonthlyRecords } from '../scripts/price-tracking-records.mjs';
-import params from '../scripts/five-day-parameters.json' with { type: 'json' };
+import { version as forecastVersion } from '../shared/forecast-model.js';
 
 const day = '2026-11-25';
 const clock = time => taipeiClock(new Date(day + 'T' + time + '+08:00'));
 const targets = trackingSymbols(day);
 const collect = async (_, ids) => ids.map(code => [code, {
   forecast_close: 100, previous_close: 100, forecast_direction: '漲', history_through: '2026-11-24',
-  priceMethod: 'previous', input: [0,0,0,0], complete_window: true,
-  model_version: code === 'TAIEX' ? 'taiex-v1-test' : 'daily-test'
+  priceMethod: 'scenario', path_closes: [100, 99.5, 99, 98.5, 98], complete_window: true,
+  model_version: forecastVersion
 }]);
 async function fixture(t) {
   const dir = await mkdtemp(join(tmpdir(), 'edition-'));
@@ -77,9 +77,14 @@ test('盤前部分失敗可只補五日線，首日沿用既有 CSV，七檔重�
   assert.equal(complete['2330'].generated_at,later.timestamp);
   for (const stock of targets) {
     assert.ok(matchesDaily(complete[stock],await disk.get(day,stock)));
-    assert.equal(complete[stock].model_version,params.version);
+    assert.equal(complete[stock].model_version,forecastVersion);
   }
-  assert.deepEqual(complete['2330'].targets.map(t=>t.close),[100,100,100,100,100]);
+  assert.deepEqual(complete['2330'].targets.map(t=>t.close),[100,99.5,99,98.5,98]);
+  assert.ok(complete['2330'].targets.every(t=>t.method==='scenario'));
+  const legacy = structuredClone(complete['2330']);
+  legacy.targets[0].method = 'previous';
+  legacy.targets[1].method = 'ridge';
+  assert.equal(matchesDaily(legacy,original),true);
   const broken = structuredClone(complete['2330']);
   broken.targets[2].date = broken.targets[1].date;
   assert.equal(matchesDaily(broken,original),false);

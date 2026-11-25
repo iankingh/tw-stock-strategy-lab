@@ -35,5 +35,5 @@ export function matchesDaily(path, row) {
   const calendar = pathCalendar(row.trade_date);
   return path.history_through === calendar.previous && path.targets[0]?.close === row.forecast_close &&
     path.targets.every((t, i) => t && t.date === calendar.dates[i] && Number.isFinite(t.close) &&
-      t.close > 0 && ['previous', 'ridge'].includes(t.method));
+      t.close > 0 && ['previous', 'ridge', 'scenario'].includes(t.method));
 }
