@@ -154,7 +154,7 @@ export async function waitForCollection(date, mode, clock = taipeiClock, delay =
   await summary(`台灣時間 ${wake.timestamp} 結束待命，交由正式工作核對 ${date} 的${mode === 'forecast' ? '盤前預測' : '收盤行情'}。`);
 }
 
-export async function recoveryTask(records, now, start = indexStart) {
+export async function recoveryTask(records, now, start = indexStart, minCloseDate = '') {
   if (isPremarketHour(now.hour)) {
     if (!await isTradingDate(now.date)) return null;
     const { daily, paths } = await forecastGaps(records, now.date, trackingSymbols(now.date, start));
@@ -163,6 +163,7 @@ export async function recoveryTask(records, now, start = indexStart) {
   }
   const date = now.hour >= closeStartHour && await isTradingDate(now.date)
     ? now.date : await previousTradingDate(now.date);
+  if (minCloseDate && date < minCloseDate) return null;
   const missing = [];
   for (const symbol of trackingSymbols(date, start)) {
     if (!hasClose(await records.get(date, symbol))) missing.push(symbol);
@@ -325,7 +326,7 @@ async function main(mode, requestedDate, option) {
         if (standby.mode === 'forecast') await appendFile(process.env.GITHUB_OUTPUT, `standby_date=${standby.date}\n`);
       }
     }
-    const task = await recoveryTask(records, now);
+    const task = await recoveryTask(records, now, indexStart, firstPathDate);
     if (!task) return summary(standby ? '上一個交易日的收盤價已齊。' : '無需補跑。');
     await summary(`${task.date} 缺${task.mode === 'forecast' ? '單日或五日盤前預測' : '收盤價'}：${task.missing.join('、')}。`);
     if (process.env.GITHUB_OUTPUT) {

@@ -2,7 +2,7 @@ import { isTradingDate, shiftDate, validDate } from './trading-calendar.js';
 import { onTimeForecast } from './premarket.js';
 
 // 線上發布後的第一個交易日，較早的日期只稽核單日紀錄。
-export const firstPathDate = '2026-11-25';
+export const firstPathDate = '2026-11-26';
 
 /** @param {string} date @param {number} step */
 function nextSession(date, step) {

@@ -11,6 +11,6 @@
 ## 發布資料
 
 - 單日紀錄保存在 `data/daily-price-tracking/YYYY-MM.csv`，保留既有中文表頭與欄序。個股使用元，大盤使用點。
-- 自 2026-11-25 起，`data/daily-price-tracking/paths/YYYY-MM-DD.json` 按發布日存檔。最外層以股票代號或 `TAIEX` 為鍵。部分成功時只出現已發布標的。
+- 自 2026-11-26 起，`data/daily-price-tracking/paths/YYYY-MM-DD.json` 按發布日存檔。最外層以股票代號或 `TAIEX` 為鍵。部分成功時只出現已發布標的。
 - 每筆含 `trade_date`、`stock_id`、台灣時間 `generated_at`、行情截至日 `history_through`、五日 `model_version`、單日 `daily_model_version` 及首日 `direction`。`targets` 依序包含五個交易日的 `date`、數值 `close`、方法 `method`。方法值 `scenario` 為共用葛蘭碧／MA20 情境模型，`previous`（基準收盤）與 `ridge`（正則化迴歸）保留相容歷史紀錄。
 - 同目錄 `latest.json` 以標的代號指向其最近發布日期。

@@ -10,8 +10,8 @@ import { isTradingDate, shiftDate, taipeiClock } from './price-tracking-market.m
 import { MonthlyRecords } from './price-tracking-records.mjs';
 
 const data = fileURLToPath(new URL('../data/', import.meta.url));
-const initialDay = '2026-11-17';
-const firstSlotAudit = '2026-11-19';
+const initialDay = '2026-11-26';
+const firstSlotAudit = '2026-11-26';
 const slots = [
   ['0 7 * * *', '07:00', '盤前預測'], ['20 7 * * *', '07:20', '盤前補跑'],
   ['15 9 * * *', '09:15', '盤前稽核'], ['0 17 * * *', '17:00', '收盤'],
