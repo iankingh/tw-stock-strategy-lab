@@ -1,0 +1,254 @@
+{
+  "2312": {
+    "stock_id": "2312",
+    "trade_date": "2026-11-26",
+    "history_through": "2026-11-25",
+    "model_version": "workstation-ma20-v1",
+    "daily_model_version": "workstation-ma20-v1",
+    "direction": "跌",
+    "targets": [
+      {
+        "date": "2026-11-26",
+        "close": 21.17,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-11-27",
+        "close": 21.1,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-11-30",
+        "close": 21.03,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-12-01",
+        "close": 20.96,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-12-02",
+        "close": 20.9,
+        "method": "scenario"
+      }
+    ],
+    "generated_at": "2026-11-26 07:19:25"
+  },
+  "2317": {
+    "stock_id": "2317",
+    "trade_date": "2026-11-26",
+    "history_through": "2026-11-25",
+    "model_version": "workstation-ma20-v1",
+    "daily_model_version": "workstation-ma20-v1",
+    "direction": "跌",
+    "targets": [
+      {
+        "date": "2026-11-26",
+        "close": 205.77,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-11-27",
+        "close": 205.05,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-11-30",
+        "close": 204.36,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-12-01",
+        "close": 203.71,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-12-02",
+        "close": 203.12,
+        "method": "scenario"
+      }
+    ],
+    "generated_at": "2026-11-26 07:19:25"
+  },
+  "2330": {
+    "stock_id": "2330",
+    "trade_date": "2026-11-26",
+    "history_through": "2026-11-25",
+    "model_version": "workstation-ma20-v1",
+    "daily_model_version": "workstation-ma20-v1",
+    "direction": "跌",
+    "targets": [
+      {
+        "date": "2026-11-26",
+        "close": 2142.35,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-11-27",
+        "close": 2134.86,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-11-30",
+        "close": 2127.67,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-12-01",
+        "close": 2120.94,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-12-02",
+        "close": 2114.8,
+        "method": "scenario"
+      }
+    ],
+    "generated_at": "2026-11-26 07:19:25"
+  },
+  "2603": {
+    "stock_id": "2603",
+    "trade_date": "2026-11-26",
+    "history_through": "2026-11-25",
+    "model_version": "workstation-ma20-v1",
+    "daily_model_version": "workstation-ma20-v1",
+    "direction": "跌",
+    "targets": [
+      {
+        "date": "2026-11-26",
+        "close": 251.6,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-11-27",
+        "close": 250.72,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-11-30",
+        "close": 249.88,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-12-01",
+        "close": 249.09,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-12-02",
+        "close": 248.37,
+        "method": "scenario"
+      }
+    ],
+    "generated_at": "2026-11-26 07:19:25"
+  },
+  "3231": {
+    "stock_id": "3231",
+    "trade_date": "2026-11-26",
+    "history_through": "2026-11-25",
+    "model_version": "workstation-ma20-v1",
+    "daily_model_version": "workstation-ma20-v1",
+    "direction": "跌",
+    "targets": [
+      {
+        "date": "2026-11-26",
+        "close": 151.46,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-11-27",
+        "close": 150.93,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-11-30",
+        "close": 150.42,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-12-01",
+        "close": 149.95,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-12-02",
+        "close": 149.51,
+        "method": "scenario"
+      }
+    ],
+    "generated_at": "2026-11-26 07:19:25"
+  },
+  "3481": {
+    "stock_id": "3481",
+    "trade_date": "2026-11-26",
+    "history_through": "2026-11-25",
+    "model_version": "workstation-ma20-v1",
+    "daily_model_version": "workstation-ma20-v1",
+    "direction": "跌",
+    "targets": [
+      {
+        "date": "2026-11-26",
+        "close": 30.44,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-11-27",
+        "close": 30.33,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-11-30",
+        "close": 30.23,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-12-01",
+        "close": 30.14,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-12-02",
+        "close": 30.05,
+        "method": "scenario"
+      }
+    ],
+    "generated_at": "2026-11-26 07:19:25"
+  },
+  "TAIEX": {
+    "stock_id": "TAIEX",
+    "trade_date": "2026-11-26",
+    "history_through": "2026-11-25",
+    "model_version": "workstation-ma20-v1",
+    "daily_model_version": "workstation-ma20-v1",
+    "direction": "跌",
+    "targets": [
+      {
+        "date": "2026-11-26",
+        "close": 38059.54,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-11-27",
+        "close": 37926.41,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-11-30",
+        "close": 37798.76,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-12-01",
+        "close": 37679.18,
+        "method": "scenario"
+      },
+      {
+        "date": "2026-12-02",
+        "close": 37570.11,
+        "method": "scenario"
+      }
+    ],
+    "generated_at": "2026-11-26 07:19:25"
+  }
+}
