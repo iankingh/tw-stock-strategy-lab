@@ -217,3 +217,52 @@ test('workstation-ma20-v2 依乖離率與均線斜率區分漲跌，且只依賴
     forecastClosePath(oversold, 5, 20)
   );
 });
+
+test('大盤歷史日 K（source: twse）可正常偵測實際 B2 買點', () => {
+  const { ctx } = workstation();
+  const closes = [...Array(20).fill(38000), 38760, 38380, 38760, 39140];
+  ctx.raw = closes.map((close, i) => ({
+    open: close, close, high: close, low: close, volume: null,
+    date: calendar.shiftDate('2026-10-01', i).replaceAll('-', '/')
+  }));
+  const bars = vm.runInContext('enrichCandlesWithIndicatorsAndForecast(raw, 20, 2, undefined, true)', ctx);
+  assert.equal(bars[22].source, 'twse');
+  assert.equal(bars[22].rule, 'B2');
+  assert.notEqual(bars[23].rule, 'B2');
+});
+
+test('futureTradingDates 依盤前、盤後、休市日與全週期示範對齊第 1 根預測日', () => {
+  const { ctx } = workstation();
+  const evalDates = (today, latestExpr) => {
+    vm.runInContext(`todayInTaipei = () => '${today}'`, ctx);
+    return JSON.parse(vm.runInContext(`JSON.stringify(futureTradingDates(${latestExpr}))`, ctx));
+  };
+
+  // 交易日盤前／盤中（latest < today）：當天即為第 1 根預測日
+  const premarket = evalDates('2026-11-17', "'2026/11/16'");
+  assert.equal(premarket.length, 44);
+  assert.equal(premarket[0], '2026/11/17');
+
+  // 交易日盤後（latest === today）：從下一交易日起算
+  const afterClose = evalDates('2026-11-17', "'2026/11/17'");
+  assert.equal(afterClose.length, 44);
+  assert.equal(afterClose[0], '2026/11/18');
+
+  // 休市日（週末與國定假日，latest < today）：自動順延至下一交易日
+  const weekend = evalDates('2026-11-21', "'2026/11/20'");
+  assert.equal(weekend.length, 44);
+  assert.equal(weekend[0], '2026/11/23');
+  const holiday = evalDates('2026-12-25', "'2026/12/24'");
+  assert.equal(holiday.length, 44);
+  assert.equal(holiday[0], '2026/12/28');
+
+  // 全週期示範（未帶 latestDate）：維持從 today 隔日起算，不與基準日重疊
+  const demoDates = evalDates('2026-11-17', '');
+  assert.equal(demoDates.length, 44);
+  assert.equal(demoDates[0], '2026/11/18');
+  const demoBars = vm.runInContext("generateDemoDataset('TAIEX', 20, 2)", ctx);
+  const currentBar = demoBars.find(b => b.isCurrent);
+  const firstForecastBar = demoBars.find(b => b.isForecast);
+  assert.equal(currentBar.date, '2026/11/17');
+  assert.equal(firstForecastBar.date, '2026/11/18');
+});

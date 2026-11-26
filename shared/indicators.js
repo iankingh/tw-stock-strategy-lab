@@ -82,7 +82,7 @@ export function computeTechnicalIndicators(bars, maPeriod, bbStdMult) {
     bars[i].bias20 = bias20 === null ? null : Number(bias20.toFixed(2));
     bars[i].selectedMA = bars[i].ma20;
     bars[i].selectedBiasPct = bars[i].bias20;
-    const historical = bars[i].source === 'finmind' || bars[i].source === 'manual';
+    const historical = bars[i].source === 'finmind' || bars[i].source === 'manual' || bars[i].source === 'twse';
     if (historical && ma20 !== null && previousMA !== null && prevBar && i >= 2) {
       const pullback = prevBar.close < bars[i - 2].close && prevBar.close >= previousMA && prevBar.close <= previousMA * 1.022;
       if (ma20 > previousMA && pullback && bars[i].close > prevBar.close && bars[i].close >= ma20) {

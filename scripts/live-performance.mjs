@@ -1,6 +1,7 @@
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { MonthlyRecords } from './price-tracking-records.mjs';
 import { onTimeForecast } from '../shared/premarket.js';
+import { firstPathDate } from '../shared/five-day.js';
 import { validDate } from '../shared/trading-calendar.js';
 import { readStart } from './taiex.mjs';
 import { direction, isDirection } from '../shared/daily-model.js';
@@ -42,8 +43,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const [start, end] = process.argv.slice(2);
   const { date: today, hour } = taipeiClock();
   const cutoff = hour < 9 ? shiftDate(today, -1) : today;
-  if (!validDate(start) || !validDate(end) || start < '2026-11-17' || end < start || end > cutoff) {
-    throw new Error(`用法：node scripts/live-performance.mjs 起日 迄日，範圍為 2026-11-17 至 ${cutoff}`);
+  if (!validDate(start) || !validDate(end) || start < firstPathDate || end < start || end > cutoff) {
+    throw new Error(`用法：node scripts/live-performance.mjs 起日 迄日，範圍為 ${firstPathDate} 至 ${cutoff}`);
   }
   const records = new MonthlyRecords(fileURLToPath(new URL('../data/daily-price-tracking', import.meta.url)));
   const average = (sum, n, unit) => n ? (sum / n).toFixed(3) + unit : '—';

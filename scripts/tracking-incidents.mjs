@@ -66,7 +66,6 @@ export async function auditDay(day, now, runs, records, journal) {
   if (!await isTradingDate(day)) return;
   const affected = new Set();
   for (const [cron, time, label] of slots) {
-    if (day === firstSlotAudit && time < '17:00') continue;
     const planned = Date.parse(day + 'T' + time + ':00+08:00');
     const deadline = planned + 15 * 60000;
     if (+now < deadline) continue;
@@ -194,7 +193,6 @@ async function main() {
   }
   const records = new MonthlyRecords(join(data, 'daily-price-tracking'));
   for (let day = start; day <= today; day = shiftDate(day, 1)) {
-    // 11/19 的舊版 run 沒有時段標題，經查證的紀錄已收錄在當月檔案。
     if (day >= firstSlotAudit) await auditDay(day, now, runs, records, journal);
   }
   await journal.save();

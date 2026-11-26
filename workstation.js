@@ -27,8 +27,12 @@ function collectTradingDates(start, count, direction) {
 function futureTradingDates(latestDate) {
   const today = todayInTaipei();
   const latest = latestDate?.replaceAll('/', '-');
-  const anchor = latest > today ? latest : today;
-  return collectTradingDates(calendar.shiftDate(anchor, 1), FORECAST_SESSIONS, 1);
+  const start = !latest
+    ? calendar.shiftDate(today, 1)
+    : latest < today
+      ? today
+      : calendar.shiftDate(latest, 1);
+  return collectTradingDates(start, FORECAST_SESSIONS, 1);
 }
 
 // ==========================================
@@ -529,8 +533,6 @@ function rebuildAndRenderAll() {
   const hasData = state.currentBarIndex !== -1;
   document.getElementById('manual-price-details').hidden = !hasData;
   document.getElementById('mobile-market-home').hidden = isMarketIndex();
-  document.getElementById('chart-modes').hidden = false;
-  document.getElementById('scenario-panel').hidden = false;
   for (const button of document.querySelectorAll('[data-download]')) {
     button.disabled = !hasData;
   }

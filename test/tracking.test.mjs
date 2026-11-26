@@ -204,11 +204,12 @@ test('準時率包含全日缺席，價差與方向只計入已配對的實盤�
 
 test('11 月 20 日備援、正式寫入與網頁讀取共用 06:00 含至 09:00 不含的界線', async t => {
   const day = '2026-11-20';
+  const start = '2026-11-19';
   const all = [...symbols, 'TAIEX'];
   for (const [time, eligible] of [['05:59:59', false], ['06:00:00', true], ['06:27:24', true], ['08:59:59', true], ['09:00:00', false]]) {
     const records = await tempRecords(t);
     const now = taipeiClock(new Date(`${day}T${time}+08:00`));
-    const task = await recoveryTask(records, now);
+    const task = await recoveryTask(records, now, start);
     assert.deepEqual(task, { mode: eligible ? 'forecast' : 'retry', date: eligible ? day : '2026-11-19', missing: all });
     const values = { previous_close: 100, forecast_close: 100, forecast_direction: '漲', model_version: 'daily-test' };
     const row = { ...values, trade_date: day, stock_id: '2330', forecast_at: now.timestamp };
@@ -217,12 +218,12 @@ test('11 月 20 日備援、正式寫入與網頁讀取共用 06:00 含至 09:00
     const collect = t.mock.fn(async (_, targets) => targets.map(id => [id, {
       ...values, model_version: id === 'TAIEX' ? 'taiex-v1-test' : values.model_version
     }]));
-    const attempt = runForecast(records, day, now, collect, () => now);
+    const attempt = runForecast(records, day, now, collect, () => now, start);
     if (eligible) {
       await attempt;
       assert.deepEqual(collect.mock.calls[0].arguments[1], all);
       assert.equal((await records.get(day, 'TAIEX')).forecast_at, now.timestamp);
-      assert.equal(await recoveryTask(records, now), null);
+      assert.equal(await recoveryTask(records, now, start), null);
     } else {
       await assert.rejects(attempt, /未開始抓取行情/);
       assert.equal(collect.mock.callCount(), 0);
@@ -233,22 +234,23 @@ test('11 月 20 日備援、正式寫入與網頁讀取共用 06:00 含至 09:00
 
 test('11 月 23 日 04:49:54 備援等到 06:00，即使下一輪排程 09:58 才到仍可交付', async t => {
   const date = '2026-11-23';
+  const start = '2026-11-19';
   const at = (time, day = date) => taipeiClock(new Date(`${day}T${time}+08:00`));
   const records = await tempRecords(t);
   let now = at('04:49:54');
   assert.deepEqual(await standbyTask(now), { mode: 'forecast', date });
-  assert.equal((await recoveryTask(records, now)).date, '2026-11-20');
+  assert.equal((await recoveryTask(records, now, start)).date, '2026-11-20');
   const delay = async ms => { assert.equal(ms, 4_206_000); now = at('06:00:00'); };
   await waitForCollection(date, 'forecast', () => now, delay);
-  const task = await recoveryTask(records, now);
+  const task = await recoveryTask(records, now, start);
   assert.deepEqual(task, { mode: 'forecast', date, missing: [...symbols, 'TAIEX'] });
   await runForecast(records, date, now, async (_, targets) => targets.map(id => [id, {
     previous_close: 10, forecast_close: 10, forecast_direction: '漲',
     model_version: id === 'TAIEX' ? 'taiex-v1-test' : 'daily-test'
-  }]), () => now);
+  }]), () => now, start);
   const saved = new MonthlyRecords(records.directory);
   for (const id of task.missing) assert.equal((await saved.get(date, id)).forecast_at, now.timestamp);
-  await runForecast(saved, date, at('09:58:11'), () => assert.fail('已有七筆時不可重抓'));
+  await runForecast(saved, date, at('09:58:11'), () => assert.fail('已有七筆時不可重抓'), undefined, start);
 });
 
 test('清晨待命遵守交易日及兩小時上限，晚起時仍由寫入工作檢查截止', async t => {
@@ -263,38 +265,39 @@ test('清晨待命遵守交易日及兩小時上限，晚起時仍由寫入工�
   const late = at('09:58:11');
   await waitForCollection(date, 'forecast', () => late, never);
   const records = await tempRecords(t);
-  await assert.rejects(runForecast(records, date, late, never), /未開始抓取行情/);
+  await assert.rejects(runForecast(records, date, late, never, undefined, '2026-11-19'), /未開始抓取行情/);
   assert.equal(await records.get(date, 'TAIEX'), undefined);
 });
 
 test('11 月 23 日 16:58:04 備援先查上個交易日，到 17:00 補齊當日七筆收盤', async t => {
   const date = '2026-11-23';
+  const start = '2026-11-19';
   const at = time => taipeiClock(new Date(`${date}T${time}+08:00`));
   const records = await tempRecords(t);
   let now = at('16:58:04');
   const task = await standbyTask(now);
   assert.deepEqual(task, { mode: 'retry', date });
-  assert.equal((await recoveryTask(records, now)).date, '2026-11-20');
+  assert.equal((await recoveryTask(records, now, start)).date, '2026-11-20');
   await waitForCollection(task.date, task.mode, () => now, async ms => {
     assert.equal(ms, 116_000);
     now = at('17:00:00');
   });
   const targets = [...symbols, 'TAIEX'];
-  assert.deepEqual(await recoveryTask(records, now), { mode: 'retry', date, missing: targets });
+  assert.deepEqual(await recoveryTask(records, now, start), { mode: 'retry', date, missing: targets });
   await runClose(records, task.date, now.date, true, false, async (day, missing) => {
     assert.equal(day, date);
     assert.deepEqual(missing, targets);
     return missing.map(id => [id, { actual_close: 100, actual_recorded_at: now.timestamp }]);
-  });
+  }, start);
   await records.save();
   const disk = new MonthlyRecords(records.directory);
-  await checkCloses(disk, await retryDates(date, false));
+  await checkCloses(disk, await retryDates(date, false), start);
   for (const id of targets) {
     const row = await disk.get(date, id);
     assert.equal(row.actual_recorded_at, now.timestamp);
     assert.equal(row.forecast_close, null);
   }
-  assert.equal(await recoveryTask(disk, now), null);
+  assert.equal(await recoveryTask(disk, now, start), null);
 });
 
 test('下午待命限於交易日的兩小時內，跨月甦醒仍可補原交易日收盤', async () => {
