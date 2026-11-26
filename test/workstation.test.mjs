@@ -202,3 +202,18 @@ test('大盤具備足夠歷史日 K 時套用共用 44 日預測模型、點位�
   const demo = vm.runInContext("generateDemoDataset('TAIEX', 20, 2)", app.ctx);
   assert.ok(demo.every(b => b.close > 20000));
 });
+
+test('workstation-ma20-v2 依乖離率與均線斜率區分漲跌，且只依賴最近 MA 視窗', () => {
+  const overheated = [...Array(19).fill(100), 110];
+  assert.ok(forecastClosePath(overheated, 1, 20)[0] < 110);
+  const oversold = [...Array(19).fill(100), 90];
+  assert.ok(forecastClosePath(oversold, 1, 20)[0] > 90);
+  const risingNearMA = [...Array(10).fill(99), ...Array(10).fill(101)];
+  assert.ok(forecastClosePath(risingNearMA, 1, 20)[0] > 101);
+  const fallingNearMA = [...Array(10).fill(101), ...Array(10).fill(99)];
+  assert.ok(forecastClosePath(fallingNearMA, 1, 20)[0] < 99);
+  assert.deepEqual(
+    forecastClosePath([...Array(50).fill(50), ...oversold], 5, 20),
+    forecastClosePath(oversold, 5, 20)
+  );
+});

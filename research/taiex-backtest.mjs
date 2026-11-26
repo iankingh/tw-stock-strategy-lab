@@ -71,6 +71,6 @@ for (const [period, result, title] of [['validation', validation, '2025 驗證�
   for (const m of directionMethods) report.push('| ' + [names[m], result[m].accuracy.toFixed(3) + '%', ...directions.map(d => result[m].classes[d].hits + '/' + result[m].classes[d].total)].join(' | ') + ' |');
   report.push('');
 }
-await writeFile(new URL('../scripts/taiex-model-parameters.json', import.meta.url), JSON.stringify(params, null, 2) + '\n');
+await writeFile(new URL('parameters/taiex-model-parameters.json', import.meta.url), JSON.stringify(params, null, 2) + '\n');
 await writeFile(new URL('taiex-results.md', import.meta.url), report.join('\n'));
 console.log(report.join('\n'));

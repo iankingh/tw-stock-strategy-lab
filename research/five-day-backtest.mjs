@@ -4,8 +4,8 @@ import { symbols } from '../scripts/price-tracking-market.mjs';
 import { loadArchive } from '../scripts/taiex.mjs';
 import { features, direction, predictClose } from '../shared/daily-model.js';
 import { train } from './train.mjs';
-import stocks from '../scripts/daily-model-parameters.json' with { type: 'json' };
-import index from '../scripts/taiex-model-parameters.json' with { type: 'json' };
+import stocks from './parameters/daily-model-parameters.json' with { type: 'json' };
+import index from './parameters/taiex-model-parameters.json' with { type: 'json' };
 
 const history = (await readFile(new URL('history.csv', import.meta.url), 'utf8')).trim().split(/\r?\n/);
 if (history.shift() !== ['date', ...symbols].join(',')) throw new Error('行情表頭異常');
@@ -81,6 +81,6 @@ const version = 'five-day-v1-' + createHash('sha256').update(JSON.stringify([sto
 report.splice(2, 0, '部署版本 `' + version + '`。', '');
 const markdown = report.join('\n') + '\n';
 if (process.argv.includes('--write')) {
-  await writeFile(new URL('../scripts/five-day-parameters.json', import.meta.url), JSON.stringify({ version, models }, null, 2) + '\n');
+  await writeFile(new URL('parameters/five-day-parameters.json', import.meta.url), JSON.stringify({ version, models }, null, 2) + '\n');
   await writeFile(new URL('five-day-results.md', import.meta.url), markdown);
 } else process.stdout.write(markdown);

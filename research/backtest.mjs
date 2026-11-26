@@ -121,7 +121,7 @@ report.push('## 資料與重現', '', `共 ${dates.length} 個市場交易日。
   '', '執行 `node research/backtest.mjs` 可用封存行情重算報告。`node research/backtest.mjs --write` 同時輸出報告與盤前模型參數。更新來源快照使用 `node research/download-history.mjs`。', '');
 const markdown = report.join('\n');
 if (process.argv.includes('--write')) {
-  await writeFile(new URL('../scripts/daily-model-parameters.json', import.meta.url), JSON.stringify(deployment, null, 2) + '\n');
+  await writeFile(new URL('parameters/daily-model-parameters.json', import.meta.url), JSON.stringify(deployment, null, 2) + '\n');
   await writeFile(new URL('results.md', import.meta.url), markdown);
 } else {
   process.stdout.write(markdown);
